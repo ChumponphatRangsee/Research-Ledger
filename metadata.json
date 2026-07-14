@@ -1,0 +1,6 @@
+{
+  "name": "AI Investment Research Assistant",
+  "description": "An AI-powered investment research assistant that searches reliable public sources, generates structured investment memos, saves them to Google Docs, and syncs key metrics with a Google Sheets portfolio dashboard.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
