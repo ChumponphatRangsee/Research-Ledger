@@ -6,10 +6,15 @@ import { Check, X, Loader2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { approveInboxItem, discardInboxItem, fetchInbox, type InboxItem } from "@/lib/api";
+import { ApiError, approveInboxItem, discardInboxItem, fetchInbox, type InboxItem } from "@/lib/api";
 
-// TODO: replace with authenticated user ID from Supabase Auth
-const PLACEHOLDER_USER_ID = "00000000-0000-0000-0000-000000000001";
+function apiErrorMessage(error: unknown, fallback: string) {
+  if (error instanceof ApiError && (error.status === 401 || error.status === 403)) {
+    return "Please sign in again to continue.";
+  }
+  if (error instanceof Error) return error.message;
+  return fallback;
+}
 
 function recommendationBadgeClass(rec: string | null) {
   if (rec === "BUY") return "border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-400";
@@ -28,8 +33,8 @@ export function InboxList() {
       setError(null);
       const data = await fetchInbox();
       setItems(data);
-    } catch {
-      setError("Could not load inbox. Is the backend running?");
+    } catch (err) {
+      setError(apiErrorMessage(err, "Could not load inbox. Is the backend running?"));
     } finally {
       setLoading(false);
     }
@@ -42,10 +47,10 @@ export function InboxList() {
   const handleApprove = async (id: string) => {
     setActionId(id);
     try {
-      await approveInboxItem(id, PLACEHOLDER_USER_ID);
+      await approveInboxItem(id);
       setItems((prev) => prev.filter((item) => item.id !== id));
-    } catch {
-      setError("Failed to approve item.");
+    } catch (err) {
+      setError(apiErrorMessage(err, "Failed to approve item."));
     } finally {
       setActionId(null);
     }
@@ -54,10 +59,10 @@ export function InboxList() {
   const handleDiscard = async (id: string) => {
     setActionId(id);
     try {
-      await discardInboxItem(id, PLACEHOLDER_USER_ID);
+      await discardInboxItem(id);
       setItems((prev) => prev.filter((item) => item.id !== id));
-    } catch {
-      setError("Failed to discard item.");
+    } catch (err) {
+      setError(apiErrorMessage(err, "Failed to discard item."));
     } finally {
       setActionId(null);
     }

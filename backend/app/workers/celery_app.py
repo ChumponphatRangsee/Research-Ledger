@@ -1,5 +1,4 @@
 from celery import Celery
-from celery.schedules import crontab
 
 from app.config import get_settings
 
@@ -18,13 +17,7 @@ celery_app.conf.update(
     result_serializer="json",
     timezone="UTC",
     enable_utc=True,
-    beat_schedule={
-        "daily-stock-screener": {
-            "task": "app.workers.tasks.run_daily_screener",
-            "schedule": crontab(
-                hour=settings.screener_cron_hour,
-                minute=settings.screener_cron_minute,
-            ),
-        },
-    },
+    # Phase-one MVP requires every analysis to originate from an authenticated user.
+    # A global scheduled screener has no JWT identity, so it must not enqueue pipelines.
+    beat_schedule={},
 )

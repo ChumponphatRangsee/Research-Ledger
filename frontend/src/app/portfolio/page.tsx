@@ -1,4 +1,4 @@
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { PortfolioList } from "@/components/portfolio/portfolio-list";
 
 export default function PortfolioPage() {
   return (
@@ -9,16 +9,7 @@ export default function PortfolioPage() {
           Holdings created from approved inbox recommendations.
         </p>
       </div>
-      <Card>
-        <CardHeader>
-          <CardTitle>No holdings yet</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <p className="text-sm text-muted-foreground">
-            Approve items in the inbox and execute trades to build your portfolio.
-          </p>
-        </CardContent>
-      </Card>
+      <PortfolioList />
     </div>
   );
 }

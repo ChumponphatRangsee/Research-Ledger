@@ -17,6 +17,8 @@ class Settings(BaseSettings):
 
     supabase_url: str = ""
     supabase_service_role_key: str = ""
+    supabase_jwt_audience: str = "authenticated"
+    supabase_jwt_secret: str = ""
 
     openai_api_key: str = ""
     anthropic_api_key: str = ""

@@ -3,6 +3,7 @@ from typing import Any, TypedDict
 
 class ResearchState(TypedDict, total=False):
     ticker_symbol: str
+    user_id: str
     screening_run_id: str | None
     inbox_id: str | None
 
