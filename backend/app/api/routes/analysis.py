@@ -9,10 +9,6 @@ from app.db.supabase import get_supabase_client
 router = APIRouter()
 
 
-def _owner_filter(user_id: UUID) -> str:
-    return f"user_id.is.null,user_id.eq.{user_id}"
-
-
 def _reviewed_at() -> str:
     return datetime.now(timezone.utc).isoformat()
 
@@ -29,7 +25,7 @@ async def list_inbox(
         client.table("analysis_inbox")
         .select("*, tickers(symbol, name, sector)")
         .eq("status", status)
-        .or_(_owner_filter(current_user.id))
+        .eq("user_id", str(current_user.id))
         .order("created_at", desc=True)
         .limit(limit)
     )
@@ -47,7 +43,7 @@ async def get_inbox_item(
         client.table("analysis_inbox")
         .select("*, tickers(symbol, name, sector, industry)")
         .eq("id", str(inbox_id))
-        .or_(_owner_filter(current_user.id))
+        .eq("user_id", str(current_user.id))
         .limit(1)
         .execute()
     )
@@ -68,16 +64,16 @@ async def approve_inbox_item(
         .update(
             {
                 "status": "approved",
-                "user_id": str(current_user.id),
                 "reviewed_at": _reviewed_at(),
             }
         )
         .eq("id", str(inbox_id))
-        .or_(_owner_filter(current_user.id))
+        .eq("user_id", str(current_user.id))
+        .eq("status", "pending_review")
         .execute()
     )
     if not result.data:
-        raise HTTPException(status_code=404, detail="Inbox item not found")
+        raise HTTPException(status_code=404, detail="Pending inbox item not found")
     return {"status": "approved", "item": result.data[0]}
 
 
@@ -93,14 +89,14 @@ async def discard_inbox_item(
         .update(
             {
                 "status": "discarded",
-                "user_id": str(current_user.id),
                 "reviewed_at": _reviewed_at(),
             }
         )
         .eq("id", str(inbox_id))
-        .or_(_owner_filter(current_user.id))
+        .eq("user_id", str(current_user.id))
+        .eq("status", "pending_review")
         .execute()
     )
     if not result.data:
-        raise HTTPException(status_code=404, detail="Inbox item not found")
+        raise HTTPException(status_code=404, detail="Pending inbox item not found")
     return {"status": "discarded", "item": result.data[0]}

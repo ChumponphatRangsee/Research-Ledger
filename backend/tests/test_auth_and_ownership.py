@@ -6,15 +6,18 @@ from fastapi.testclient import TestClient
 
 os.environ["DEBUG"] = "false"
 
+from app.agents import graph
 from app.api.auth import AuthenticatedUser, require_user
-from app.api.routes import analysis, portfolio
+from app.api.routes import analysis, portfolio, screener
 from app.main import create_app
+from app.workers import tasks
 
 
 USER_A = UUID("00000000-0000-0000-0000-00000000000a")
 USER_B = UUID("00000000-0000-0000-0000-00000000000b")
 INBOX_ID = UUID("11111111-1111-1111-1111-111111111111")
 TICKER_ID = UUID("22222222-2222-2222-2222-222222222222")
+RUN_ID = UUID("33333333-3333-3333-3333-333333333333")
 
 
 class FakeQuery:
@@ -23,6 +26,7 @@ class FakeQuery:
         self.calls = []
         self.update_payload = None
         self.insert_payload = None
+        self.upsert_payload = None
 
     def select(self, value):
         self.calls.append(("select", value))
@@ -44,6 +48,10 @@ class FakeQuery:
         self.calls.append(("limit", value))
         return self
 
+    def single(self):
+        self.calls.append(("single",))
+        return self
+
     def update(self, payload):
         self.calls.append(("update", payload))
         self.update_payload = payload
@@ -52,6 +60,11 @@ class FakeQuery:
     def insert(self, payload):
         self.calls.append(("insert", payload))
         self.insert_payload = payload
+        return self
+
+    def upsert(self, payload, on_conflict=None):
+        self.calls.append(("upsert", payload, on_conflict))
+        self.upsert_payload = payload
         return self
 
     def execute(self):
@@ -66,6 +79,19 @@ class FakeSupabaseClient:
     def table(self, name):
         self.tables.append(name)
         return self.queries.pop(0)
+
+
+class FakeTaskResult:
+    id = "task-123"
+
+
+class FakeCeleryTask:
+    def __init__(self):
+        self.delay_calls = []
+
+    def delay(self, *args):
+        self.delay_calls.append(args)
+        return FakeTaskResult()
 
 
 def make_client(user_id=USER_A):
@@ -94,8 +120,42 @@ def test_invalid_bearer_token_is_unauthorized():
     assert response.status_code == 401
 
 
-def test_list_inbox_filters_to_current_user_or_unassigned(monkeypatch):
-    query = FakeQuery(data=[{"id": str(INBOX_ID), "user_id": None}])
+def test_unauthenticated_users_cannot_run_screener_endpoints():
+    client = TestClient(create_app())
+
+    run_response = client.post("/api/screener/run")
+    pipeline_response = client.post("/api/screener/pipeline", json={"ticker_symbol": "AAPL"})
+
+    assert run_response.status_code == 401
+    assert pipeline_response.status_code == 401
+
+
+def test_screener_routes_use_jwt_user_instead_of_request_data(monkeypatch):
+    run_task = FakeCeleryTask()
+    pipeline_task = FakeCeleryTask()
+    monkeypatch.setattr(screener, "run_daily_screener", run_task)
+    monkeypatch.setattr(screener, "trigger_analysis_pipeline", pipeline_task)
+    client, app = make_client(USER_A)
+
+    run_response = client.post("/api/screener/run", json={"user_id": str(USER_B)})
+    pipeline_response = client.post(
+        "/api/screener/pipeline",
+        json={
+            "ticker_symbol": "MSFT",
+            "screening_run_id": str(RUN_ID),
+            "user_id": str(USER_B),
+        },
+    )
+
+    assert run_response.status_code == 200
+    assert pipeline_response.status_code == 200
+    assert run_task.delay_calls == [(str(USER_A),)]
+    assert pipeline_task.delay_calls == [("MSFT", str(USER_A), str(RUN_ID))]
+    app.dependency_overrides.clear()
+
+
+def test_list_inbox_filters_to_current_user_only(monkeypatch):
+    query = FakeQuery(data=[{"id": str(INBOX_ID), "user_id": str(USER_A)}])
     fake_supabase = FakeSupabaseClient([query])
     monkeypatch.setattr(analysis, "get_supabase_client", lambda: fake_supabase)
     client, app = make_client(USER_A)
@@ -103,25 +163,12 @@ def test_list_inbox_filters_to_current_user_or_unassigned(monkeypatch):
     response = client.get("/api/analysis/inbox")
 
     assert response.status_code == 200
-    assert ("or", f"user_id.is.null,user_id.eq.{USER_A}") in query.calls
+    assert ("eq", "user_id", str(USER_A)) in query.calls
+    assert not any(call[0] == "or" for call in query.calls)
     app.dependency_overrides.clear()
 
 
-def test_get_inbox_item_uses_owner_filter(monkeypatch):
-    query = FakeQuery(data=[{"id": str(INBOX_ID), "user_id": str(USER_A)}])
-    fake_supabase = FakeSupabaseClient([query])
-    monkeypatch.setattr(analysis, "get_supabase_client", lambda: fake_supabase)
-    client, app = make_client(USER_A)
-
-    response = client.get(f"/api/analysis/inbox/{INBOX_ID}")
-
-    assert response.status_code == 200
-    assert ("eq", "id", str(INBOX_ID)) in query.calls
-    assert ("or", f"user_id.is.null,user_id.eq.{USER_A}") in query.calls
-    app.dependency_overrides.clear()
-
-
-def test_user_cannot_fetch_another_users_analysis(monkeypatch):
+def test_user_cannot_view_another_users_analysis(monkeypatch):
     query = FakeQuery(data=[])
     fake_supabase = FakeSupabaseClient([query])
     monkeypatch.setattr(analysis, "get_supabase_client", lambda: fake_supabase)
@@ -130,11 +177,25 @@ def test_user_cannot_fetch_another_users_analysis(monkeypatch):
     response = client.get(f"/api/analysis/inbox/{INBOX_ID}")
 
     assert response.status_code == 404
-    assert ("or", f"user_id.is.null,user_id.eq.{USER_A}") in query.calls
+    assert ("eq", "id", str(INBOX_ID)) in query.calls
+    assert ("eq", "user_id", str(USER_A)) in query.calls
     app.dependency_overrides.clear()
 
 
-def test_approve_unassigned_analysis_claims_current_user(monkeypatch):
+def test_null_owned_analysis_is_inaccessible(monkeypatch):
+    query = FakeQuery(data=[])
+    fake_supabase = FakeSupabaseClient([query])
+    monkeypatch.setattr(analysis, "get_supabase_client", lambda: fake_supabase)
+    client, app = make_client(USER_A)
+
+    response = client.get(f"/api/analysis/inbox/{INBOX_ID}")
+
+    assert response.status_code == 404
+    assert ("eq", "user_id", str(USER_A)) in query.calls
+    app.dependency_overrides.clear()
+
+
+def test_only_pending_review_analysis_can_be_approved(monkeypatch):
     query = FakeQuery(data=[{"id": str(INBOX_ID), "user_id": str(USER_A), "status": "approved"}])
     fake_supabase = FakeSupabaseClient([query])
     monkeypatch.setattr(analysis, "get_supabase_client", lambda: fake_supabase)
@@ -146,49 +207,68 @@ def test_approve_unassigned_analysis_claims_current_user(monkeypatch):
     )
 
     assert response.status_code == 200
-    assert query.update_payload["user_id"] == str(USER_A)
     assert query.update_payload["status"] == "approved"
+    assert "user_id" not in query.update_payload
     assert "reviewed_at" in query.update_payload
-    assert ("or", f"user_id.is.null,user_id.eq.{USER_A}") in query.calls
+    assert ("eq", "user_id", str(USER_A)) in query.calls
+    assert ("eq", "status", "pending_review") in query.calls
     app.dependency_overrides.clear()
 
 
-def test_user_cannot_discard_another_users_claimed_analysis(monkeypatch):
+def test_non_pending_or_inaccessible_analysis_cannot_be_approved(monkeypatch):
     query = FakeQuery(data=[])
     fake_supabase = FakeSupabaseClient([query])
     monkeypatch.setattr(analysis, "get_supabase_client", lambda: fake_supabase)
-    client, app = make_client(USER_B)
+    client, app = make_client(USER_A)
+
+    response = client.post(f"/api/analysis/inbox/{INBOX_ID}/approve")
+
+    assert response.status_code == 404
+    assert query.update_payload["status"] == "approved"
+    assert ("eq", "user_id", str(USER_A)) in query.calls
+    assert ("eq", "status", "pending_review") in query.calls
+    app.dependency_overrides.clear()
+
+
+def test_non_pending_or_inaccessible_analysis_cannot_be_discarded(monkeypatch):
+    query = FakeQuery(data=[])
+    fake_supabase = FakeSupabaseClient([query])
+    monkeypatch.setattr(analysis, "get_supabase_client", lambda: fake_supabase)
+    client, app = make_client(USER_A)
 
     response = client.post(f"/api/analysis/inbox/{INBOX_ID}/discard")
 
     assert response.status_code == 404
-    assert query.update_payload["user_id"] == str(USER_B)
-    assert ("or", f"user_id.is.null,user_id.eq.{USER_B}") in query.calls
+    assert query.update_payload["status"] == "discarded"
+    assert "user_id" not in query.update_payload
+    assert ("eq", "user_id", str(USER_A)) in query.calls
+    assert ("eq", "status", "pending_review") in query.calls
     app.dependency_overrides.clear()
 
 
-def test_portfolio_list_filters_to_current_user(monkeypatch):
-    query = FakeQuery(data=[{"id": "holding-1", "user_id": str(USER_A)}])
-    fake_supabase = FakeSupabaseClient([query])
+def test_user_cannot_execute_another_users_analysis(monkeypatch):
+    inbox_query = FakeQuery(data=[])
+    fake_supabase = FakeSupabaseClient([inbox_query])
     monkeypatch.setattr(portfolio, "get_supabase_client", lambda: fake_supabase)
     client, app = make_client(USER_A)
 
-    response = client.get(f"/api/portfolio/?user_id={USER_B}")
+    response = client.post(f"/api/portfolio/execute/{INBOX_ID}", json={"shares": 1})
 
-    assert response.status_code == 200
-    assert ("eq", "user_id", str(USER_A)) in query.calls
-    assert ("eq", "user_id", str(USER_B)) not in query.calls
+    assert response.status_code == 404
+    assert ("eq", "id", str(INBOX_ID)) in inbox_query.calls
+    assert ("eq", "user_id", str(USER_A)) in inbox_query.calls
+    assert fake_supabase.tables == ["analysis_inbox"]
     app.dependency_overrides.clear()
 
 
-def test_execute_rejects_another_users_analysis(monkeypatch):
+def test_only_approved_user_owned_analysis_can_enter_portfolio(monkeypatch):
     inbox_query = FakeQuery(
         data=[
             {
                 "id": str(INBOX_ID),
                 "ticker_id": str(TICKER_ID),
-                "status": "approved",
-                "user_id": str(USER_B),
+                "status": "pending_review",
+                "user_id": str(USER_A),
             }
         ]
     )
@@ -198,8 +278,7 @@ def test_execute_rejects_another_users_analysis(monkeypatch):
 
     response = client.post(f"/api/portfolio/execute/{INBOX_ID}", json={"shares": 1})
 
-    assert response.status_code == 404
-    assert fake_supabase.tables == ["analysis_inbox"]
+    assert response.status_code == 400
     app.dependency_overrides.clear()
 
 
@@ -214,8 +293,9 @@ def test_execute_inserts_current_user_and_rejects_spoofed_user_id(monkeypatch):
             }
         ]
     )
+    duplicate_check_query = FakeQuery(data=[])
     insert_query = FakeQuery(data=[{"id": "holding-1", "user_id": str(USER_A)}])
-    fake_supabase = FakeSupabaseClient([inbox_query, insert_query])
+    fake_supabase = FakeSupabaseClient([inbox_query, duplicate_check_query, insert_query])
     monkeypatch.setattr(portfolio, "get_supabase_client", lambda: fake_supabase)
     client, app = make_client(USER_A)
 
@@ -234,3 +314,110 @@ def test_execute_inserts_current_user_and_rejects_spoofed_user_id(monkeypatch):
 
     assert spoof_response.status_code == 422
     app.dependency_overrides.clear()
+
+
+def test_repeated_portfolio_execution_does_not_create_duplicate(monkeypatch):
+    inbox_query = FakeQuery(
+        data=[
+            {
+                "id": str(INBOX_ID),
+                "ticker_id": str(TICKER_ID),
+                "status": "approved",
+                "user_id": str(USER_A),
+            }
+        ]
+    )
+    duplicate_check_query = FakeQuery(data=[{"id": "existing-holding"}])
+    fake_supabase = FakeSupabaseClient([inbox_query, duplicate_check_query])
+    monkeypatch.setattr(portfolio, "get_supabase_client", lambda: fake_supabase)
+    client, app = make_client(USER_A)
+
+    response = client.post(f"/api/portfolio/execute/{INBOX_ID}", json={"shares": 1})
+
+    assert response.status_code == 409
+    assert fake_supabase.tables == ["analysis_inbox", "portfolios"]
+    app.dependency_overrides.clear()
+
+
+def test_portfolio_list_filters_to_current_user(monkeypatch):
+    query = FakeQuery(data=[{"id": "holding-1", "user_id": str(USER_A)}])
+    fake_supabase = FakeSupabaseClient([query])
+    monkeypatch.setattr(portfolio, "get_supabase_client", lambda: fake_supabase)
+    client, app = make_client(USER_A)
+
+    response = client.get(f"/api/portfolio/?user_id={USER_B}")
+
+    assert response.status_code == 200
+    assert ("eq", "user_id", str(USER_A)) in query.calls
+    assert ("eq", "user_id", str(USER_B)) not in query.calls
+    app.dependency_overrides.clear()
+
+
+def test_screener_task_passes_authenticated_user_to_pipeline(monkeypatch):
+    delayed_pipeline_calls = []
+
+    class FakePipelineTask:
+        @staticmethod
+        def delay(*args):
+            delayed_pipeline_calls.append(args)
+
+    monkeypatch.setattr(tasks, "run_quantitative_screen", lambda: {"run_id": str(RUN_ID), "candidates": [{"symbol": "AAPL"}], "count": 1})
+    monkeypatch.setattr(tasks, "trigger_analysis_pipeline", FakePipelineTask)
+
+    result = tasks.run_daily_screener.run(str(USER_A))
+
+    assert result["pipelines_triggered"] == 1
+    assert delayed_pipeline_calls == [("AAPL", str(USER_A), str(RUN_ID))]
+
+
+def test_pipeline_task_passes_ownership_into_langgraph(monkeypatch):
+    calls = []
+
+    def fake_run_pipeline(ticker_symbol, user_id, screening_run_id=None):
+        calls.append((ticker_symbol, user_id, screening_run_id))
+        return {"ticker_symbol": ticker_symbol, "user_id": user_id, "screening_run_id": screening_run_id}
+
+    monkeypatch.setattr(tasks, "run_pipeline", fake_run_pipeline)
+
+    result = tasks.trigger_analysis_pipeline.run("AAPL", str(USER_A), str(RUN_ID))
+
+    assert result["user_id"] == str(USER_A)
+    assert calls == [("AAPL", str(USER_A), str(RUN_ID))]
+
+
+def test_langgraph_invocation_includes_user_id(monkeypatch):
+    invoked_states = []
+
+    class FakeResearchGraph:
+        @staticmethod
+        def invoke(state):
+            invoked_states.append(state)
+            return {**state, "inbox_id": str(INBOX_ID)}
+
+    monkeypatch.setattr(graph, "research_graph", FakeResearchGraph)
+
+    result = graph.run_pipeline("AAPL", str(USER_A), str(RUN_ID))
+
+    assert result["user_id"] == str(USER_A)
+    assert invoked_states[0]["user_id"] == str(USER_A)
+
+
+def test_langgraph_persists_correct_user_id(monkeypatch):
+    ticker_query = FakeQuery(data={"id": str(TICKER_ID)})
+    inbox_query = FakeQuery(data=[{"id": str(INBOX_ID)}])
+    fake_supabase = FakeSupabaseClient([ticker_query, inbox_query])
+    monkeypatch.setattr(graph, "get_supabase_client", lambda: fake_supabase)
+
+    result = graph._save_to_inbox(
+        {
+            "ticker_symbol": "AAPL",
+            "user_id": str(USER_A),
+            "screening_run_id": str(RUN_ID),
+            "financial_metrics": {"current_price": 150},
+            "recommendation": "BUY",
+        }
+    )
+
+    assert result["inbox_id"] == str(INBOX_ID)
+    assert inbox_query.insert_payload["user_id"] == str(USER_A)
+    assert inbox_query.insert_payload["status"] == "pending_review"

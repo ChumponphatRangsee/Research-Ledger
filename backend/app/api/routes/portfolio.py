@@ -56,6 +56,17 @@ async def execute_from_inbox(
     if inbox_item["status"] != "approved":
         raise HTTPException(status_code=400, detail="Inbox item must be approved first")
 
+    existing = (
+        client.table("portfolios")
+        .select("id")
+        .eq("user_id", str(current_user.id))
+        .eq("approved_from_inbox_id", str(inbox_id))
+        .limit(1)
+        .execute()
+    )
+    if existing.data:
+        raise HTTPException(status_code=409, detail="Inbox item has already been executed")
+
     avg_cost = body.cost_basis / body.shares if body.cost_basis and body.shares else None
     portfolio = (
         client.table("portfolios")

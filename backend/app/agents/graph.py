@@ -14,6 +14,7 @@ def _save_to_inbox(state: ResearchState) -> ResearchState:
     """Breakpoint: persist completed analysis to inbox for human approval."""
     client = get_supabase_client()
     symbol = state["ticker_symbol"]
+    user_id = state["user_id"]
 
     ticker = client.table("tickers").select("id").eq("symbol", symbol).single().execute()
     if not ticker.data:
@@ -26,6 +27,7 @@ def _save_to_inbox(state: ResearchState) -> ResearchState:
     inbox = client.table("analysis_inbox").insert(
         {
             "ticker_id": ticker_id,
+            "user_id": user_id,
             "screening_run_id": state.get("screening_run_id"),
             "status": "pending_review",
             "pipeline_stage": "complete",
@@ -77,10 +79,12 @@ def build_research_graph():
 research_graph = build_research_graph()
 
 
-def run_pipeline(ticker_symbol: str, screening_run_id: str | None = None) -> dict:
+def run_pipeline(ticker_symbol: str, user_id: str, screening_run_id: str | None = None) -> dict:
     result = research_graph.invoke(
         {
             "ticker_symbol": ticker_symbol,
+            # Ownership enters the graph at invocation and is persisted at the human-review breakpoint.
+            "user_id": user_id,
             "screening_run_id": screening_run_id,
             "pipeline_stage": "researcher",
         }

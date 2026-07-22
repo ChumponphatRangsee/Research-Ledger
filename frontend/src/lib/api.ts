@@ -21,6 +21,12 @@ export type InboxItem = {
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
+export class ApiError extends Error {
+  constructor(message: string, readonly status: number) {
+    super(message);
+  }
+}
+
 async function authHeaders(includeJson = false): Promise<HeadersInit> {
   const supabase = createClient();
   const { data, error } = await supabase.auth.getSession();
@@ -36,13 +42,26 @@ async function authHeaders(includeJson = false): Promise<HeadersInit> {
   };
 }
 
+async function parseResponse<T>(res: Response, fallbackMessage: string): Promise<T> {
+  if (!res.ok) {
+    let message = fallbackMessage;
+    try {
+      const data = await res.json();
+      message = data.detail ?? fallbackMessage;
+    } catch {
+      // Non-JSON error responses still carry a useful status code.
+    }
+    throw new ApiError(message, res.status);
+  }
+  return res.json();
+}
+
 export async function fetchInbox(status = "pending_review"): Promise<InboxItem[]> {
   const res = await fetch(`${API_URL}/api/analysis/inbox?status=${status}`, {
     headers: await authHeaders(),
     cache: "no-store",
   });
-  if (!res.ok) throw new Error("Failed to fetch inbox");
-  const data = await res.json();
+  const data = await parseResponse<{ items: InboxItem[] }>(res, "Failed to fetch inbox");
   return data.items;
 }
 
@@ -51,8 +70,7 @@ export async function approveInboxItem(id: string) {
     method: "POST",
     headers: await authHeaders(),
   });
-  if (!res.ok) throw new Error("Failed to approve");
-  return res.json();
+  return parseResponse(res, "Failed to approve");
 }
 
 export async function discardInboxItem(id: string) {
@@ -60,8 +78,7 @@ export async function discardInboxItem(id: string) {
     method: "POST",
     headers: await authHeaders(),
   });
-  if (!res.ok) throw new Error("Failed to discard");
-  return res.json();
+  return parseResponse(res, "Failed to discard");
 }
 
 export type PortfolioHolding = {
@@ -86,8 +103,7 @@ export async function fetchPortfolio(): Promise<PortfolioHolding[]> {
     headers: await authHeaders(),
     cache: "no-store",
   });
-  if (!res.ok) throw new Error("Failed to fetch portfolio");
-  const data = await res.json();
+  const data = await parseResponse<{ holdings: PortfolioHolding[] }>(res, "Failed to fetch portfolio");
   return data.holdings;
 }
 
@@ -100,6 +116,22 @@ export async function executeFromInbox(
     headers: await authHeaders(true),
     body: JSON.stringify(body),
   });
-  if (!res.ok) throw new Error("Failed to execute portfolio action");
-  return res.json();
+  return parseResponse(res, "Failed to execute portfolio action");
+}
+
+export async function runScreener() {
+  const res = await fetch(`${API_URL}/api/screener/run`, {
+    method: "POST",
+    headers: await authHeaders(),
+  });
+  return parseResponse(res, "Failed to run screener");
+}
+
+export async function triggerPipeline(body: { ticker_symbol: string; screening_run_id?: string | null }) {
+  const res = await fetch(`${API_URL}/api/screener/pipeline`, {
+    method: "POST",
+    headers: await authHeaders(true),
+    body: JSON.stringify(body),
+  });
+  return parseResponse(res, "Failed to trigger pipeline");
 }
