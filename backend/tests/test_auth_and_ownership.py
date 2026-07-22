@@ -10,6 +10,7 @@ from app.agents import graph
 from app.api.auth import AuthenticatedUser, require_user
 from app.api.routes import analysis, portfolio, screener
 from app.main import create_app
+from app.services import screener as screener_service
 from app.workers import tasks
 
 
@@ -133,8 +134,11 @@ def test_unauthenticated_users_cannot_run_screener_endpoints():
 def test_screener_routes_use_jwt_user_instead_of_request_data(monkeypatch):
     run_task = FakeCeleryTask()
     pipeline_task = FakeCeleryTask()
+    screening_run_query = FakeQuery(data=[{"id": str(RUN_ID), "user_id": str(USER_A)}])
+    fake_supabase = FakeSupabaseClient([screening_run_query])
     monkeypatch.setattr(screener, "run_daily_screener", run_task)
     monkeypatch.setattr(screener, "trigger_analysis_pipeline", pipeline_task)
+    monkeypatch.setattr(screener, "get_supabase_client", lambda: fake_supabase)
     client, app = make_client(USER_A)
 
     run_response = client.post("/api/screener/run", json={"user_id": str(USER_B)})
@@ -151,6 +155,27 @@ def test_screener_routes_use_jwt_user_instead_of_request_data(monkeypatch):
     assert pipeline_response.status_code == 200
     assert run_task.delay_calls == [(str(USER_A),)]
     assert pipeline_task.delay_calls == [("MSFT", str(USER_A), str(RUN_ID))]
+    assert ("eq", "user_id", str(USER_A)) in screening_run_query.calls
+    app.dependency_overrides.clear()
+
+
+def test_pipeline_route_rejects_another_users_screening_run(monkeypatch):
+    pipeline_task = FakeCeleryTask()
+    screening_run_query = FakeQuery(data=[])
+    fake_supabase = FakeSupabaseClient([screening_run_query])
+    monkeypatch.setattr(screener, "trigger_analysis_pipeline", pipeline_task)
+    monkeypatch.setattr(screener, "get_supabase_client", lambda: fake_supabase)
+    client, app = make_client(USER_A)
+
+    response = client.post(
+        "/api/screener/pipeline",
+        json={"ticker_symbol": "MSFT", "screening_run_id": str(RUN_ID)},
+    )
+
+    assert response.status_code == 404
+    assert pipeline_task.delay_calls == []
+    assert ("eq", "id", str(RUN_ID)) in screening_run_query.calls
+    assert ("eq", "user_id", str(USER_A)) in screening_run_query.calls
     app.dependency_overrides.clear()
 
 
@@ -361,13 +386,28 @@ def test_screener_task_passes_authenticated_user_to_pipeline(monkeypatch):
         def delay(*args):
             delayed_pipeline_calls.append(args)
 
-    monkeypatch.setattr(tasks, "run_quantitative_screen", lambda: {"run_id": str(RUN_ID), "candidates": [{"symbol": "AAPL"}], "count": 1})
+    monkeypatch.setattr(tasks, "run_quantitative_screen", lambda user_id: {"run_id": str(RUN_ID), "candidates": [{"symbol": "AAPL"}], "count": 1})
     monkeypatch.setattr(tasks, "trigger_analysis_pipeline", FakePipelineTask)
 
     result = tasks.run_daily_screener.run(str(USER_A))
 
     assert result["pipelines_triggered"] == 1
     assert delayed_pipeline_calls == [("AAPL", str(USER_A), str(RUN_ID))]
+
+
+def test_quantitative_screen_persists_screening_run_owner(monkeypatch):
+    insert_run_query = FakeQuery(data=[{"id": str(RUN_ID)}])
+    update_run_query = FakeQuery(data=[{"id": str(RUN_ID)}])
+    fake_supabase = FakeSupabaseClient([insert_run_query, update_run_query])
+    monkeypatch.setattr(screener_service, "get_supabase_client", lambda: fake_supabase)
+
+    result = screener_service.run_quantitative_screen(str(USER_A), universe=[])
+
+    assert result["run_id"] == str(RUN_ID)
+    assert insert_run_query.insert_payload["user_id"] == str(USER_A)
+    assert insert_run_query.insert_payload["status"] == "running"
+    assert ("eq", "id", str(RUN_ID)) in update_run_query.calls
+    assert ("eq", "user_id", str(USER_A)) in update_run_query.calls
 
 
 def test_pipeline_task_passes_ownership_into_langgraph(monkeypatch):

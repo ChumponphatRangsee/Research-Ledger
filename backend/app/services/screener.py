@@ -32,7 +32,7 @@ def passes_criteria(metrics: dict[str, Any], criteria: dict[str, Any]) -> bool:
     return True
 
 
-def run_quantitative_screen(universe: list[str] | None = None) -> dict[str, Any]:
+def run_quantitative_screen(user_id: str, universe: list[str] | None = None) -> dict[str, Any]:
     settings = get_settings()
     client = get_supabase_client()
 
@@ -42,10 +42,14 @@ def run_quantitative_screen(universe: list[str] | None = None) -> dict[str, Any]
         "min_roe": settings.screener_min_roe,
     }
 
-    run = client.table("screening_runs").insert({"criteria": criteria, "status": "running"}).execute()
+    run = (
+        client.table("screening_runs")
+        .insert({"user_id": user_id, "criteria": criteria, "status": "running"})
+        .execute()
+    )
     run_id = run.data[0]["id"] if run.data else None
 
-    symbols = universe or DEFAULT_UNIVERSE
+    symbols = DEFAULT_UNIVERSE if universe is None else universe
     candidates: list[dict[str, Any]] = []
 
     for symbol in symbols:
@@ -74,6 +78,6 @@ def run_quantitative_screen(universe: list[str] | None = None) -> dict[str, Any]
                 "candidates_count": len(candidates),
                 "completed_at": datetime.now(timezone.utc).isoformat(),
             }
-        ).eq("id", run_id).execute()
+        ).eq("id", run_id).eq("user_id", user_id).execute()
 
     return {"run_id": run_id, "candidates": candidates, "count": len(candidates)}

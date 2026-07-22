@@ -6,7 +6,7 @@ from app.workers.celery_app import celery_app
 @celery_app.task(name="app.workers.tasks.run_daily_screener")
 def run_daily_screener(user_id: str):
     """User-scoped Celery job: screen stocks and trigger AI pipeline for candidates."""
-    result = run_quantitative_screen()
+    result = run_quantitative_screen(user_id)
     triggered = 0
     for candidate in result.get("candidates", []):
         trigger_analysis_pipeline.delay(candidate["symbol"], user_id, result.get("run_id"))
