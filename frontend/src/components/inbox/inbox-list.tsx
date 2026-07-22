@@ -8,9 +8,6 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { approveInboxItem, discardInboxItem, fetchInbox, type InboxItem } from "@/lib/api";
 
-// TODO: replace with authenticated user ID from Supabase Auth
-const PLACEHOLDER_USER_ID = "00000000-0000-0000-0000-000000000001";
-
 function recommendationBadgeClass(rec: string | null) {
   if (rec === "BUY") return "border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-400";
   if (rec === "HOLD") return "border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-400";
@@ -42,7 +39,7 @@ export function InboxList() {
   const handleApprove = async (id: string) => {
     setActionId(id);
     try {
-      await approveInboxItem(id, PLACEHOLDER_USER_ID);
+      await approveInboxItem(id);
       setItems((prev) => prev.filter((item) => item.id !== id));
     } catch {
       setError("Failed to approve item.");
@@ -54,7 +51,7 @@ export function InboxList() {
   const handleDiscard = async (id: string) => {
     setActionId(id);
     try {
-      await discardInboxItem(id, PLACEHOLDER_USER_ID);
+      await discardInboxItem(id);
       setItems((prev) => prev.filter((item) => item.id !== id));
     } catch {
       setError("Failed to discard item.");
