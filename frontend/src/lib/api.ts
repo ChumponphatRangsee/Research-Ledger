@@ -124,7 +124,16 @@ export async function runScreener() {
     method: "POST",
     headers: await authHeaders(),
   });
-  return parseResponse(res, "Failed to run screener");
+  return parseResponse<{ task_id: string; status: string }>(res, "Failed to run screener");
+}
+
+export async function runSectorScreener(topNCandidates = 20) {
+  const res = await fetch(`${API_URL}/api/screener/run`, {
+    method: "POST",
+    headers: await authHeaders(true),
+    body: JSON.stringify({ top_n_candidates: topNCandidates }),
+  });
+  return parseResponse<{ task_id: string; status: string }>(res, "Failed to run screener");
 }
 
 export async function triggerPipeline(body: { ticker_symbol: string; screening_run_id?: string | null }) {
@@ -134,4 +143,63 @@ export async function triggerPipeline(body: { ticker_symbol: string; screening_r
     body: JSON.stringify(body),
   });
   return parseResponse(res, "Failed to trigger pipeline");
+}
+
+export type ScreeningRun = {
+  id: string;
+  status: "running" | "completed" | "failed";
+  criteria: { top_n_candidates?: number; min_score?: number };
+  requested_count: number;
+  processed_count: number;
+  failed_count: number;
+  passed_count: number;
+  selected_count: number;
+  started_at: string;
+  completed_at: string | null;
+  error_message: string | null;
+};
+
+export type ScreeningResult = {
+  id: string;
+  business_model: string;
+  passed: boolean;
+  total_score: number | null;
+  confidence_score: number;
+  quality_score: number | null;
+  growth_score: number | null;
+  financial_strength_score: number | null;
+  valuation_score: number | null;
+  sector_specific_score: number | null;
+  metrics: Record<string, unknown>;
+  score_breakdown: Record<string, unknown>;
+  strengths: string[];
+  warnings: string[];
+  failure_reasons: string[];
+  tickers: {
+    symbol: string;
+    name: string | null;
+    sector: string | null;
+    industry: string | null;
+  } | null;
+};
+
+export async function fetchLatestScreeningRun(): Promise<ScreeningRun | null> {
+  const res = await fetch(`${API_URL}/api/screener/runs/latest`, {
+    headers: await authHeaders(),
+    cache: "no-store",
+  });
+  if (res.status === 404) return null;
+  return parseResponse<ScreeningRun>(res, "Failed to fetch screening run");
+}
+
+export async function fetchScreeningResults(runId: string): Promise<ScreeningResult[]> {
+  const res = await fetch(
+    `${API_URL}/api/screener/runs/${runId}/results?limit=500&sort=total_score_desc`,
+    { headers: await authHeaders(), cache: "no-store" }
+  );
+  const data = await parseResponse<{ items: ScreeningResult[] }>(
+    res,
+    "Failed to fetch screening results"
+  );
+  return data.items;
 }

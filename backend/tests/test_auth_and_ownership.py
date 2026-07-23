@@ -49,6 +49,10 @@ class FakeQuery:
         self.calls.append(("limit", value))
         return self
 
+    def gte(self, field, value):
+        self.calls.append(("gte", field, value))
+        return self
+
     def single(self):
         self.calls.append(("single",))
         return self
@@ -176,6 +180,38 @@ def test_pipeline_route_rejects_another_users_screening_run(monkeypatch):
     assert pipeline_task.delay_calls == []
     assert ("eq", "id", str(RUN_ID)) in screening_run_query.calls
     assert ("eq", "user_id", str(USER_A)) in screening_run_query.calls
+    app.dependency_overrides.clear()
+
+
+def test_screening_results_are_owner_scoped_and_filterable(monkeypatch):
+    owner_query = FakeQuery(data=[{"id": str(RUN_ID), "user_id": str(USER_A)}])
+    results_query = FakeQuery(
+        data=[
+            {
+                "id": "result-1",
+                "screening_run_id": str(RUN_ID),
+                "passed": True,
+                "business_model": "software",
+                "total_score": 88,
+            }
+        ]
+    )
+    fake_supabase = FakeSupabaseClient([owner_query, results_query])
+    monkeypatch.setattr(screener, "get_supabase_client", lambda: fake_supabase)
+    client, app = make_client(USER_A)
+
+    response = client.get(
+        f"/api/screener/runs/{RUN_ID}/results"
+        "?passed=true&business_model=software&min_score=70&limit=20"
+    )
+
+    assert response.status_code == 200
+    assert ("eq", "user_id", str(USER_A)) in owner_query.calls
+    assert ("eq", "screening_run_id", str(RUN_ID)) in results_query.calls
+    assert ("eq", "passed", True) in results_query.calls
+    assert ("eq", "business_model", "software") in results_query.calls
+    assert ("gte", "total_score", 70.0) in results_query.calls
+    assert ("order", "total_score", True) in results_query.calls
     app.dependency_overrides.clear()
 
 
@@ -380,19 +416,35 @@ def test_portfolio_list_filters_to_current_user(monkeypatch):
 
 def test_screener_task_passes_authenticated_user_to_pipeline(monkeypatch):
     delayed_pipeline_calls = []
+    triggered_count_calls = []
 
     class FakePipelineTask:
         @staticmethod
         def delay(*args):
             delayed_pipeline_calls.append(args)
 
-    monkeypatch.setattr(tasks, "run_quantitative_screen", lambda user_id: {"run_id": str(RUN_ID), "candidates": [{"symbol": "AAPL"}], "count": 1})
+    monkeypatch.setattr(
+        tasks,
+        "run_quantitative_screen",
+        lambda user_id: {
+            "run_id": str(RUN_ID),
+            "candidates": [{"symbol": "AAPL"}],
+            "count": 1,
+            "selected_for_ai": 1,
+        },
+    )
     monkeypatch.setattr(tasks, "trigger_analysis_pipeline", FakePipelineTask)
+    monkeypatch.setattr(
+        tasks,
+        "record_triggered_count",
+        lambda *args: triggered_count_calls.append(args),
+    )
 
     result = tasks.run_daily_screener.run(str(USER_A))
 
     assert result["pipelines_triggered"] == 1
     assert delayed_pipeline_calls == [("AAPL", str(USER_A), str(RUN_ID))]
+    assert triggered_count_calls == [(str(USER_A), str(RUN_ID), 1)]
 
 
 def test_quantitative_screen_persists_screening_run_owner(monkeypatch):

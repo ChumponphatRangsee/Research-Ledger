@@ -28,6 +28,10 @@ class Settings(BaseSettings):
     screener_cron_hour: int = 6
     screener_cron_minute: int = 0
     screener_min_market_cap: int = 1_000_000_000
+    screener_min_score: float = 55.0
+    screener_top_n_candidates: int = 20
+    # Retained for environment-file compatibility; valuation and ROE are now scored
+    # within each strategy rather than used as universal hard filters.
     screener_max_pe: float = 25.0
     screener_min_roe: float = 0.15
 
