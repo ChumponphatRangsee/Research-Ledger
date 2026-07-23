@@ -39,6 +39,9 @@ export default function RootLayout({
               <Link href="/inbox" className="hover:text-foreground transition-colors">
                 Inbox
               </Link>
+              <Link href="/screener" className="hover:text-foreground transition-colors">
+                Screener
+              </Link>
               <Link href="/portfolio" className="hover:text-foreground transition-colors">
                 Portfolio
               </Link>
