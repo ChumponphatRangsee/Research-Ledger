@@ -39,4 +39,5 @@ STRATEGY = StrategyDefinition(
             MetricRule("inventory_growth", "Inventory trend", "range", -0.35, -0.05, 0.10, 0.50),
         ),
     },
+    required_categories=("quality", "valuation"),
 )

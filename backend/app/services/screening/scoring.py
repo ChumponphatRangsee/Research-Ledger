@@ -71,6 +71,9 @@ class StrategyDefinition:
     category_weights: dict[str, float]
     rules: dict[str, tuple[MetricRule, ...]]
     minimum_available_metrics: int = 3
+    required_categories: tuple[str, ...] = ()
+    required_category_groups: tuple[tuple[str, ...], ...] = ()
+    incomplete_data_reason: str | None = None
 
     @property
     def expected_fields(self) -> set[str]:
@@ -118,6 +121,7 @@ def score_metric(metrics: FinancialMetrics, rule: MetricRule) -> MetricScore:
 def calculate_strategy_scores(
     metrics: FinancialMetrics,
     definition: StrategyDefinition,
+    low_confidence_warning_threshold: float = 60.0,
 ) -> tuple[float | None, float, dict[str, CategoryScore], list[str], list[str]]:
     """Score available data and calculate confidence independently of quality."""
     breakdown: dict[str, CategoryScore] = {}
@@ -163,7 +167,7 @@ def calculate_strategy_scores(
         for _, result in sorted(available_results, key=lambda item: item[1].score or 0)
         if result.score is not None and result.score <= 35
     ][:4]
-    if confidence < 60:
+    if confidence < low_confidence_warning_threshold:
         warnings.append(f"Low data completeness ({confidence:.0f}% confidence)")
 
     return (

@@ -5,7 +5,13 @@ ALTER TABLE screening_runs
   ADD COLUMN IF NOT EXISTS processed_count INTEGER NOT NULL DEFAULT 0,
   ADD COLUMN IF NOT EXISTS failed_count INTEGER NOT NULL DEFAULT 0,
   ADD COLUMN IF NOT EXISTS passed_count INTEGER NOT NULL DEFAULT 0,
-  ADD COLUMN IF NOT EXISTS selected_count INTEGER NOT NULL DEFAULT 0;
+  ADD COLUMN IF NOT EXISTS selected_count INTEGER NOT NULL DEFAULT 0,
+  ADD COLUMN IF NOT EXISTS triggered_count INTEGER NOT NULL DEFAULT 0;
+
+COMMENT ON COLUMN screening_runs.selected_count IS
+  'Quantitatively ranked candidates selected for AI research.';
+COMMENT ON COLUMN screening_runs.triggered_count IS
+  'AI pipeline tasks successfully queued.';
 
 CREATE TABLE IF NOT EXISTS screening_results (
   id                       UUID PRIMARY KEY DEFAULT gen_random_uuid(),

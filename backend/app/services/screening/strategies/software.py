@@ -37,4 +37,5 @@ STRATEGY = StrategyDefinition(
             MetricRule("fcf_margin", "Cash-generative scalability", "higher", 0.0, 0.30),
         ),
     },
+    required_categories=("quality", "valuation"),
 )

@@ -3,7 +3,10 @@
 from __future__ import annotations
 
 from app.services.screening.classifier import classify_business_model
-from app.services.screening.filters import eligibility_failures
+from app.services.screening.filters import (
+    eligibility_failures,
+    required_category_failures,
+)
 from app.services.screening.models import FinancialMetrics, ScreeningResult
 from app.services.screening.scoring import calculate_strategy_scores
 from app.services.screening.strategies import resolve_strategy
@@ -12,9 +15,17 @@ from app.services.screening.strategies import resolve_strategy
 class ScreeningEngine:
     """Classify, validate, score, and explain one normalized company."""
 
-    def __init__(self, min_market_cap: float, min_score: float = 55.0):
+    def __init__(
+        self,
+        min_market_cap: float,
+        min_score: float = 55.0,
+        min_confidence: float = 60.0,
+    ):
+        if not 0.0 <= min_confidence <= 100.0:
+            raise ValueError("min_confidence must be between 0 and 100")
         self.min_market_cap = min_market_cap
         self.min_score = min_score
+        self.min_confidence = min_confidence
 
     def screen(self, metrics: FinancialMetrics) -> ScreeningResult:
         business_model = classify_business_model(metrics)
@@ -46,19 +57,32 @@ class ScreeningEngine:
 
         assert strategy is not None
         score, confidence, breakdown, strengths, warnings = calculate_strategy_scores(
-            metrics, strategy
+            metrics,
+            strategy,
+            low_confidence_warning_threshold=self.min_confidence,
         )
         category_scores = {
             category: detail.score for category, detail in breakdown.items()
         }
-        passed = score is not None and score >= self.min_score
-        if not passed:
+        failures.extend(required_category_failures(breakdown, strategy))
+        if score is None:
+            failures.append("No score could be calculated")
+        elif score < self.min_score:
             failures.append(
                 f"Quantitative score {score:.1f} is below configured minimum "
                 f"{self.min_score:.1f}"
-                if score is not None
-                else "No score could be calculated"
             )
+        if confidence < self.min_confidence:
+            failures.append(
+                f"Data confidence {confidence:.1f}% is below configured minimum "
+                f"{self.min_confidence:.1f}%"
+            )
+        passed = (
+            score is not None
+            and score >= self.min_score
+            and confidence >= self.min_confidence
+            and not failures
+        )
 
         return ScreeningResult(
             symbol=metrics.symbol,

@@ -148,12 +148,19 @@ export async function triggerPipeline(body: { ticker_symbol: string; screening_r
 export type ScreeningRun = {
   id: string;
   status: "running" | "completed" | "failed";
-  criteria: { top_n_candidates?: number; min_score?: number };
+  criteria: {
+    top_n_candidates?: number;
+    min_score?: number;
+    min_confidence?: number;
+    min_market_cap?: number;
+    strategy_version?: number;
+  };
   requested_count: number;
   processed_count: number;
   failed_count: number;
   passed_count: number;
   selected_count: number;
+  triggered_count: number;
   started_at: string;
   completed_at: string | null;
   error_message: string | null;

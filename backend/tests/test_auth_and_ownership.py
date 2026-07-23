@@ -447,6 +447,43 @@ def test_screener_task_passes_authenticated_user_to_pipeline(monkeypatch):
     assert triggered_count_calls == [(str(USER_A), str(RUN_ID), 1)]
 
 
+def test_screener_task_records_only_successfully_queued_pipelines(monkeypatch):
+    triggered_count_calls = []
+
+    class PartiallyFailingPipelineTask:
+        @staticmethod
+        def delay(symbol, *_args):
+            if symbol == "FAIL":
+                raise RuntimeError("broker rejected task")
+
+    monkeypatch.setattr(
+        tasks,
+        "run_quantitative_screen",
+        lambda user_id: {
+            "run_id": str(RUN_ID),
+            "candidates": [{"symbol": "AAPL"}, {"symbol": "FAIL"}],
+            "count": 2,
+            "selected_for_ai": 2,
+        },
+    )
+    monkeypatch.setattr(
+        tasks,
+        "trigger_analysis_pipeline",
+        PartiallyFailingPipelineTask,
+    )
+    monkeypatch.setattr(
+        tasks,
+        "record_triggered_count",
+        lambda *args: triggered_count_calls.append(args),
+    )
+
+    result = tasks.run_daily_screener.run(str(USER_A))
+
+    assert result["pipelines_triggered"] == 1
+    assert result["pipeline_queue_failures"] == 1
+    assert triggered_count_calls == [(str(USER_A), str(RUN_ID), 1)]
+
+
 def test_quantitative_screen_persists_screening_run_owner(monkeypatch):
     insert_run_query = FakeQuery(data=[{"id": str(RUN_ID)}])
     update_run_query = FakeQuery(data=[{"id": str(RUN_ID)}])
@@ -460,6 +497,22 @@ def test_quantitative_screen_persists_screening_run_owner(monkeypatch):
     assert insert_run_query.insert_payload["status"] == "running"
     assert ("eq", "id", str(RUN_ID)) in update_run_query.calls
     assert ("eq", "user_id", str(USER_A)) in update_run_query.calls
+
+
+def test_record_triggered_count_is_run_and_user_scoped(monkeypatch):
+    update_query = FakeQuery(data=[{"id": str(RUN_ID), "triggered_count": 7}])
+    fake_supabase = FakeSupabaseClient([update_query])
+    monkeypatch.setattr(
+        screener_service,
+        "get_supabase_client",
+        lambda: fake_supabase,
+    )
+
+    screener_service.record_triggered_count(str(USER_A), str(RUN_ID), 7)
+
+    assert update_query.update_payload == {"triggered_count": 7}
+    assert ("eq", "id", str(RUN_ID)) in update_query.calls
+    assert ("eq", "user_id", str(USER_A)) in update_query.calls
 
 
 def test_pipeline_task_passes_ownership_into_langgraph(monkeypatch):

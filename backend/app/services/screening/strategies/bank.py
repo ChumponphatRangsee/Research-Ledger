@@ -38,4 +38,7 @@ STRATEGY = StrategyDefinition(
         ),
     },
     minimum_available_metrics=3,
+    required_categories=("profitability", "valuation"),
+    required_category_groups=(("capital_credit", "efficiency"),),
+    incomplete_data_reason="Insufficient bank-specific financial data",
 )

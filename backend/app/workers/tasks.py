@@ -1,6 +1,10 @@
+import logging
+
 from app.agents.graph import run_pipeline
 from app.services.screener import record_triggered_count, run_quantitative_screen
 from app.workers.celery_app import celery_app
+
+logger = logging.getLogger(__name__)
 
 
 @celery_app.task(name="app.workers.tasks.run_daily_screener")
@@ -12,9 +16,23 @@ def run_daily_screener(user_id: str, top_n_candidates: int | None = None):
         else run_quantitative_screen(user_id, top_n_candidates=top_n_candidates)
     )
     triggered = 0
+    queue_failures = 0
     for candidate in result.get("candidates", []):
-        trigger_analysis_pipeline.delay(candidate["symbol"], user_id, result.get("run_id"))
-        triggered += 1
+        try:
+            trigger_analysis_pipeline.delay(
+                candidate["symbol"],
+                user_id,
+                result.get("run_id"),
+            )
+            triggered += 1
+        except Exception as exc:
+            queue_failures += 1
+            logger.exception(
+                "Could not queue AI pipeline for %s in screening run %s: %s",
+                candidate.get("symbol"),
+                result.get("run_id"),
+                exc,
+            )
     if result.get("run_id") and "selected_for_ai" in result:
         record_triggered_count(user_id, result["run_id"], triggered)
 
@@ -22,6 +40,7 @@ def run_daily_screener(user_id: str, top_n_candidates: int | None = None):
         "run_id": result.get("run_id"),
         "candidates_count": result.get("passed", result.get("count", 0)),
         "pipelines_triggered": triggered,
+        "pipeline_queue_failures": queue_failures,
         "requested": result.get("requested", 0),
         "processed": result.get("processed", 0),
         "failed": result.get("failed", 0),

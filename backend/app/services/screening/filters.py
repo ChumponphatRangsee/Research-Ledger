@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from app.services.screening.models import BusinessModel, FinancialMetrics
+from app.services.screening.models import BusinessModel, CategoryScore, FinancialMetrics
 from app.services.screening.scoring import StrategyDefinition
 
 
@@ -30,3 +30,26 @@ def eligibility_failures(
         failures.append("Insufficient financial data")
     return failures
 
+
+def required_category_failures(
+    breakdown: dict[str, CategoryScore],
+    strategy: StrategyDefinition,
+) -> list[str]:
+    """Require configured critical dimensions without altering partial scores."""
+    failures = [
+        f"Required category unavailable: {category}"
+        for category in strategy.required_categories
+        if breakdown.get(category) is None or breakdown[category].score is None
+    ]
+    for group in strategy.required_category_groups:
+        if not any(
+            breakdown.get(category) is not None
+            and breakdown[category].score is not None
+            for category in group
+        ):
+            failures.append(
+                f"Required category group unavailable: one of {', '.join(group)}"
+            )
+    if failures and strategy.incomplete_data_reason:
+        failures.append(strategy.incomplete_data_reason)
+    return failures

@@ -39,4 +39,5 @@ STRATEGY = StrategyDefinition(
             MetricRule("capex_intensity", "Capital intensity", "lower", 0.45, 0.08),
         ),
     },
+    required_categories=("quality", "valuation"),
 )

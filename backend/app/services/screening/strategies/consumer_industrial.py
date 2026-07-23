@@ -37,4 +37,5 @@ STRATEGY = StrategyDefinition(
             MetricRule("operating_margin", "Margin strength", "higher", 0.02, 0.22),
         ),
     },
+    required_categories=("quality", "valuation"),
 )

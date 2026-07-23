@@ -142,6 +142,7 @@ def run_quantitative_screen(
     criteria = {
         "min_market_cap": settings.screener_min_market_cap,
         "min_score": settings.screener_min_score,
+        "min_confidence": settings.screener_min_confidence,
         "top_n_candidates": top_n,
         "strategy_version": 1,
     }
@@ -165,6 +166,7 @@ def run_quantitative_screen(
     engine = ScreeningEngine(
         min_market_cap=settings.screener_min_market_cap,
         min_score=settings.screener_min_score,
+        min_confidence=settings.screener_min_confidence,
     )
     persisted_results: list[ScreeningResult] = []
     data_errors = 0

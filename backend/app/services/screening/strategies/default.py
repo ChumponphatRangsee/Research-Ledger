@@ -38,4 +38,5 @@ STRATEGY = StrategyDefinition(
             MetricRule("gross_margin", "Gross margin", "higher", 0.10, 0.55),
         ),
     },
+    required_categories=("quality", "valuation"),
 )

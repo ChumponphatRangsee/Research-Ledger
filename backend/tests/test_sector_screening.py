@@ -1,8 +1,11 @@
 import math
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
+from pydantic import ValidationError
 
+from app.config import Settings
 from app.services import screener
 from app.services.screening.classifier import classify_business_model
 from app.services.screening.engine import ScreeningEngine
@@ -87,6 +90,53 @@ def test_expensive_high_quality_software_is_scored_not_hard_rejected():
     assert not any("P/E" in reason for reason in result.failure_reasons)
 
 
+def test_high_partial_score_cannot_pass_below_confidence_threshold():
+    company = metrics(
+        "PARTIAL",
+        "Technology",
+        "Software - Application",
+        roic=0.30,
+        gross_margin=0.85,
+        revenue_growth=0.30,
+        forward_pe=25,
+    )
+
+    result = ScreeningEngine(
+        1_000_000_000,
+        min_score=55,
+        min_confidence=60,
+    ).screen(company)
+
+    assert result.score is not None and result.score >= 55
+    assert result.confidence < 60
+    assert result.passed is False
+    assert result.score > 0
+    assert any("confidence" in reason.lower() for reason in result.failure_reasons)
+
+
+def test_required_category_failure_preserves_partial_score():
+    company = metrics(
+        "NOVAL",
+        "Technology",
+        "Software - Infrastructure",
+        roic=0.28,
+        fcf_margin=0.30,
+        gross_margin=0.75,
+        operating_margin=0.38,
+        revenue_growth=0.20,
+        earnings_growth=0.25,
+        net_debt_to_ebitda=0.0,
+        interest_coverage=20,
+    )
+
+    result = ScreeningEngine(1_000_000_000).screen(company)
+
+    assert result.confidence >= 60
+    assert result.score is not None and result.score >= 55
+    assert result.passed is False
+    assert "Required category unavailable: valuation" in result.failure_reasons
+
+
 def test_weak_industrial_company_fails_score_threshold():
     company = metrics(
         "WEAK",
@@ -139,6 +189,33 @@ def test_bank_uses_bank_metrics_and_not_corporate_debt_logic():
     assert result.passed
     assert "profitability" in result.category_scores
     assert "quality" not in result.category_scores
+    assert "debt_to_equity" not in serialized_breakdown
+    assert "net_debt_to_ebitda" not in serialized_breakdown
+    assert "fcf_margin" not in serialized_breakdown
+
+
+def test_bank_with_only_generic_metrics_fails_bank_specific_coverage():
+    bank = metrics(
+        "GENBANK",
+        "Financial Services",
+        "Banks - Regional",
+        roe=0.18,
+        roa=0.016,
+        price_to_book=1.2,
+        pe_ratio=10,
+        debt_to_equity=9.0,
+        net_debt_to_ebitda=20.0,
+        fcf_margin=0.50,
+    )
+
+    result = ScreeningEngine(1_000_000_000).screen(bank)
+    serialized_breakdown = str(result.score_breakdown)
+
+    assert result.score is not None
+    assert result.confidence < 60
+    assert result.passed is False
+    assert "Insufficient bank-specific financial data" in result.failure_reasons
+    assert any("capital_credit" in reason for reason in result.failure_reasons)
     assert "debt_to_equity" not in serialized_breakdown
     assert "net_debt_to_ebitda" not in serialized_breakdown
     assert "fcf_margin" not in serialized_breakdown
@@ -227,6 +304,34 @@ def test_score_and_confidence_invariants(company):
         assert 0 <= result.score <= 100
 
 
+def test_minimum_confidence_configuration_is_bounded():
+    assert Settings(_env_file=None, screener_min_confidence=0).screener_min_confidence == 0
+    assert Settings(_env_file=None, screener_min_confidence=100).screener_min_confidence == 100
+    with pytest.raises(ValidationError):
+        Settings(_env_file=None, screener_min_confidence=-0.1)
+    with pytest.raises(ValidationError):
+        Settings(_env_file=None, screener_min_confidence=100.1)
+
+
+def test_feature_migration_contains_all_screening_run_counters():
+    migration = (
+        Path(__file__).parents[2]
+        / "supabase"
+        / "migrations"
+        / "20260723000000_sector_aware_screening_results.sql"
+    ).read_text(encoding="utf-8")
+
+    for column in (
+        "requested_count",
+        "processed_count",
+        "failed_count",
+        "passed_count",
+        "selected_count",
+        "triggered_count",
+    ):
+        assert f"ADD COLUMN IF NOT EXISTS {column} INTEGER NOT NULL DEFAULT 0" in migration
+
+
 class RecordingQuery:
     def __init__(self, client, table):
         self.client = client
@@ -274,6 +379,7 @@ def test_screening_integration_persists_ranks_and_selects_top_candidates(monkeyp
     settings = SimpleNamespace(
         screener_min_market_cap=1_000_000_000,
         screener_min_score=55.0,
+        screener_min_confidence=60.0,
         screener_top_n_candidates=1,
     )
     raw = {
@@ -317,3 +423,9 @@ def test_screening_integration_persists_ranks_and_selects_top_candidates(monkeyp
     assert result_inserts[0]["business_model"] == "software"
     assert 0 <= result_inserts[0]["total_score"] <= 100
     assert result_inserts[0]["score_breakdown"]
+    run_insert = next(
+        payload
+        for table, operation, payload in client.operations
+        if table == "screening_runs" and operation == "insert"
+    )
+    assert run_insert["criteria"]["min_confidence"] == 60.0
