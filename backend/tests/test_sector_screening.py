@@ -7,6 +7,11 @@ from pydantic import ValidationError
 
 from app.config import Settings
 from app.services import screener
+from app.services.market_data import (
+    CompanyFinancialSnapshot,
+    MarketDataService,
+    ProviderUnavailableError,
+)
 from app.services.screening.classifier import classify_business_model
 from app.services.screening.engine import ScreeningEngine
 from app.services.screening.models import BusinessModel, FinancialMetrics
@@ -374,6 +379,25 @@ class RecordingClient:
         return RecordingQuery(self, table)
 
 
+class RecordingProvider:
+    def __init__(self, snapshot: CompanyFinancialSnapshot):
+        self.snapshot = snapshot
+        self.symbols = []
+
+    def get_company_snapshot(self, symbol: str) -> CompanyFinancialSnapshot:
+        self.symbols.append(symbol)
+        return self.snapshot
+
+
+class FailingProvider:
+    def get_company_snapshot(self, symbol: str) -> CompanyFinancialSnapshot:
+        raise ProviderUnavailableError(
+            "provider unavailable",
+            provider="fake",
+            symbol=symbol,
+        )
+
+
 def test_screening_integration_persists_ranks_and_selects_top_candidates(monkeypatch):
     client = RecordingClient()
     settings = SimpleNamespace(
@@ -382,30 +406,34 @@ def test_screening_integration_persists_ranks_and_selects_top_candidates(monkeyp
         screener_min_confidence=60.0,
         screener_top_n_candidates=1,
     )
-    raw = {
-        "symbol": "MSFT",
-        "name": "Microsoft",
-        "sector": "Technology",
-        "industry": "Software - Infrastructure",
-        "current_price": 400,
-        "market_cap": 3_000_000_000_000,
-        "roic": 0.30,
-        "fcf_margin": 0.30,
-        "gross_margin": 0.70,
-        "operating_margin": 0.40,
-        "revenue_growth": 0.18,
-        "earnings_growth": 0.22,
-        "net_debt_to_ebitda": -0.5,
-        "interest_coverage": 30,
-        "forward_pe": 28,
-        "pe_ratio": 32,
-        "fcf_yield": 0.04,
-    }
+    snapshot = CompanyFinancialSnapshot(
+        symbol="MSFT",
+        name="Microsoft",
+        sector="Technology",
+        industry="Software - Infrastructure",
+        current_price=400,
+        market_cap=3_000_000_000_000,
+        roic=0.30,
+        fcf_margin=0.30,
+        gross_margin=0.70,
+        operating_margin=0.40,
+        revenue_growth=0.18,
+        earnings_growth=0.22,
+        net_debt_to_ebitda=-0.5,
+        interest_coverage=30,
+        forward_pe=28,
+        pe_ratio=32,
+        fcf_yield=0.04,
+    )
+    provider = RecordingProvider(snapshot)
     monkeypatch.setattr(screener, "get_supabase_client", lambda: client)
     monkeypatch.setattr(screener, "get_settings", lambda: settings)
-    monkeypatch.setattr(screener, "fetch_financial_metrics", lambda _symbol: raw)
 
-    output = screener.run_quantitative_screen("user-1", universe=["MSFT"])
+    output = screener.run_quantitative_screen(
+        "user-1",
+        universe=["MSFT"],
+        market_data_service=MarketDataService(provider),
+    )
 
     result_inserts = [
         payload
@@ -419,6 +447,7 @@ def test_screening_integration_persists_ranks_and_selects_top_candidates(monkeyp
     assert output["passed"] == 1
     assert output["selected_for_ai"] == 1
     assert output["candidates"][0]["symbol"] == "MSFT"
+    assert provider.symbols == ["MSFT"]
     assert len(result_inserts) == 1
     assert result_inserts[0]["business_model"] == "software"
     assert 0 <= result_inserts[0]["total_score"] <= 100
@@ -429,3 +458,40 @@ def test_screening_integration_persists_ranks_and_selects_top_candidates(monkeyp
         if table == "screening_runs" and operation == "insert"
     )
     assert run_insert["criteria"]["min_confidence"] == 60.0
+
+
+def test_screening_service_failure_preserves_existing_failure_semantics(monkeypatch):
+    client = RecordingClient()
+    settings = SimpleNamespace(
+        screener_min_market_cap=1_000_000_000,
+        screener_min_score=55.0,
+        screener_min_confidence=60.0,
+        screener_top_n_candidates=1,
+    )
+    monkeypatch.setattr(screener, "get_supabase_client", lambda: client)
+    monkeypatch.setattr(screener, "get_settings", lambda: settings)
+
+    output = screener.run_quantitative_screen(
+        "user-1",
+        universe=["FAIL"],
+        market_data_service=MarketDataService(FailingProvider()),
+    )
+
+    result_insert = next(
+        payload
+        for table, operation, payload in client.operations
+        if table == "screening_results" and operation == "insert"
+    )
+    assert output["requested"] == 1
+    assert output["processed"] == 0
+    assert output["failed"] == 1
+    assert output["passed"] == 0
+    assert output["selected_for_ai"] == 0
+    assert result_insert["confidence_score"] == 0.0
+    assert result_insert["score_breakdown"]["error"] == {
+        "type": "ProviderUnavailableError",
+        "message": "provider unavailable",
+    }
+    assert result_insert["failure_reasons"] == [
+        "Financial data retrieval failed: provider unavailable"
+    ]

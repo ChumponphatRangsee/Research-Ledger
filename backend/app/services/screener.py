@@ -8,9 +8,8 @@ from typing import Any
 
 from app.config import get_settings
 from app.db.supabase import get_supabase_client
+from app.services.market_data.service import MarketDataService
 from app.services.screening import BusinessModel, ScreeningEngine, ScreeningResult
-from app.services.screening.normalization import normalize_financial_metrics
-from app.services.yfinance_client import fetch_financial_metrics
 
 logger = logging.getLogger(__name__)
 
@@ -129,10 +128,16 @@ def run_quantitative_screen(
     user_id: str,
     universe: list[str] | None = None,
     top_n_candidates: int | None = None,
+    market_data_service: MarketDataService | None = None,
 ) -> dict[str, Any]:
     """Run, persist, rank, and return only the top AI research candidates."""
     settings = get_settings()
     client = get_supabase_client()
+    data_service = (
+        market_data_service
+        if market_data_service is not None
+        else MarketDataService()
+    )
     symbols = list(DEFAULT_UNIVERSE if universe is None else universe)
     top_n = (
         settings.screener_top_n_candidates
@@ -176,7 +181,7 @@ def run_quantitative_screen(
         symbol = raw_symbol.strip().upper()
         provider_error: Exception | None = None
         try:
-            metrics = normalize_financial_metrics(fetch_financial_metrics(symbol))
+            metrics = data_service.get_company_snapshot(symbol)
             result = engine.screen(metrics)
             processed += 1
         except Exception as exc:

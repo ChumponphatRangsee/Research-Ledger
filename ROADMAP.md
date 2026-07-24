@@ -59,14 +59,14 @@ Introduce the provider boundary without changing screening behavior, move the ex
 
 ## Phase 3 - Market Data Architecture (Current/Next)
 
-- [ ] Introduce `MarketDataProvider` abstraction
-- [ ] Move yfinance behind `YFinanceProvider`
-- [ ] Add `MarketDataService`
-- [ ] Add normalized market-data models shared by consumers
-- [ ] Add structured provider exceptions
+- [x] Introduce `MarketDataProvider` abstraction
+- [x] Move yfinance behind `YFinanceProvider`
+- [x] Add `MarketDataService`
+- [x] Add normalized market-data models shared by consumers
+- [x] Add structured provider exceptions
 - [ ] Add Supabase screening/fundamental snapshot cache
 - [ ] Add cache TTL and freshness behavior
-- [ ] Remove direct yfinance calls outside the provider layer
+- [x] Remove direct yfinance calls outside the provider layer
 - [ ] Add provider, normalization, failure, cache, and TTL tests
 
 Later in this phase:
