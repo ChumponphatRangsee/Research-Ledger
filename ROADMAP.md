@@ -9,6 +9,12 @@ Status:
 - **Current/next** is the recommended immediate work;
 - **Deferred** is intentionally outside the near-term product.
 
+## Product Strategy
+
+InvestFlow AI is a guided investment research workflow, not a financial data terminal or an autonomous trading bot. The product should help an authenticated user move from quantitative discovery to sourced AI research, human review, paper-portfolio tracking, and thesis re-evaluation.
+
+The near-term experience should prioritize decision quality over breadth: clear screening evidence, structured research memos, citations and freshness, explicit bull/base/bear thinking, documented risks, thesis invalidation criteria, and human approval before any paper holding is created.
+
 ## Next Recommended Task
 
 **Market Data Abstraction + YFinance Adapter + Supabase Snapshot Cache**
@@ -83,11 +89,11 @@ Paid-provider integration is not the immediate task; establish the internal cont
 - [ ] Add peer-group classification
 - [ ] Add peer-relative percentile scoring after sector strategies are calibrated
 
-## Phase 5 - AI Research Experience
+## Phase 5 - Guided AI Research + Investment Memo
 
 - [x] Create a LangGraph pipeline skeleton: Researcher -> Financial Analyst -> Valuator -> Decision Maker
 - [x] Persist basic prototype outputs to the owner-scoped analysis inbox
-- [ ] Add a detailed research page
+- [ ] Add a detailed research page centered on a readable investment memo
 - [ ] Define validated structured schemas for every agent output
 - [ ] Replace the placeholder researcher with sourced qualitative and filing research
 - [ ] Build a substantive financial-analysis stage on normalized data
