@@ -73,9 +73,40 @@ function formatDate(value: string) {
   }).format(date);
 }
 
+function formatShortDate(value: string) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "—";
+  const formatter = new Intl.DateTimeFormat("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "2-digit",
+  });
+  return formatter.format(date);
+}
+
 function displayLabel(value: string | null | undefined) {
   if (!value) return "—";
   return value.replaceAll("_", " ").replace(/\b\w/g, (letter) => letter.toUpperCase());
+}
+
+function statusLabel(item: InboxItem, executedIds: Set<string>) {
+  if (executedIds.has(item.id)) return "Executed";
+  if (item.status === "approved") return "Approved";
+  if (item.status === "discarded") return "Rejected";
+  return "Pending";
+}
+
+function statusBadgeClass(item: InboxItem, executedIds: Set<string>) {
+  if (executedIds.has(item.id)) {
+    return "border-sky-500/30 bg-sky-500/10 text-sky-700 dark:text-sky-400";
+  }
+  if (item.status === "approved") {
+    return "border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-400";
+  }
+  if (item.status === "discarded") {
+    return "border-rose-500/30 bg-rose-500/10 text-rose-700 dark:text-rose-400";
+  }
+  return "border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-400";
 }
 
 export function InboxList() {
@@ -248,24 +279,17 @@ export function InboxList() {
     );
   }
 
-  if (error) {
+  if (error && items.length === 0) {
     return (
-      <div className="space-y-4">
-        <Card className="border-destructive/30">
-          <CardContent className="p-6">
-            <h2 className="text-lg font-semibold">Inbox action needs attention</h2>
-            <p className="mt-2 text-sm text-muted-foreground">{error}</p>
-            <Button className="mt-4" variant="outline" onClick={() => void load()}>
-              Reload inbox
-            </Button>
-          </CardContent>
-        </Card>
-        {items.length > 0 && (
-          <Button variant="ghost" onClick={() => setError(null)}>
-            Return to loaded analyses
+      <Card className="border-destructive/30">
+        <CardContent className="flex min-h-56 flex-col items-center justify-center p-6 text-center">
+          <h2 className="text-base font-semibold">Analysis inbox unavailable</h2>
+          <p className="mt-2 max-w-md text-sm text-muted-foreground">{error}</p>
+          <Button className="mt-4" variant="outline" onClick={() => void load()}>
+            Reload inbox
           </Button>
-        )}
-      </div>
+        </CardContent>
+      </Card>
     );
   }
 
@@ -304,13 +328,28 @@ export function InboxList() {
         })}
       </div>
 
+      {error && (
+        <div
+          className="flex items-center justify-between gap-4 rounded-lg border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm text-destructive"
+          role="alert"
+        >
+          <span>{error}</span>
+          <Button size="sm" variant="ghost" onClick={() => setError(null)}>
+            Dismiss
+          </Button>
+        </div>
+      )}
+
       {notice && (
-        <div className="rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-800 dark:text-emerald-300">
+        <div
+          className="rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-800 dark:text-emerald-300"
+          role="status"
+        >
           {notice}
         </div>
       )}
 
-      <div className="grid items-start gap-4 lg:grid-cols-[minmax(0,0.85fr)_minmax(0,1.6fr)]">
+      <div className="grid items-start gap-4 xl:grid-cols-[minmax(0,1.3fr)_minmax(360px,0.7fr)]">
         <Card className="overflow-hidden">
           <div className="border-b px-4 py-3">
             <p className="text-sm font-semibold">Analysis queue</p>
@@ -319,7 +358,7 @@ export function InboxList() {
               {tabs.find((tab) => tab.id === activeTab)?.label.toLowerCase()}
             </p>
           </div>
-          <div className="divide-y">
+          <div className="overflow-x-auto">
             {visibleItems.length === 0 && (
               <div className="flex min-h-48 flex-col items-center justify-center p-6 text-center">
                 <Inbox className="h-5 w-5 text-muted-foreground" />
@@ -331,66 +370,91 @@ export function InboxList() {
                 </p>
               </div>
             )}
-            {visibleItems.map((item) => {
-              const isSelected = selectedItem?.id === item.id;
-              return (
-                <button
-                  key={item.id}
-                  type="button"
-                  onClick={() => setSelectedId(item.id)}
-                  className={`w-full p-4 text-left transition-colors hover:bg-muted/50 ${
-                    isSelected ? "bg-accent/70" : ""
-                  }`}
-                  aria-pressed={isSelected}
+            {visibleItems.length > 0 && (
+              <div className="min-w-[760px]">
+                <div
+                  className="grid grid-cols-[minmax(150px,1.5fr)_88px_70px_64px_108px_82px_86px] gap-3 border-b bg-muted/35 px-3 py-2 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground"
+                  aria-hidden="true"
                 >
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="min-w-0">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <span className="font-semibold">{item.tickers?.symbol ?? "—"}</span>
-                        <Badge
-                          className={recommendationBadgeClass(item.recommendation)}
-                          variant="outline"
+                  <span>Company</span>
+                  <span>Rating</span>
+                  <span className="text-right">Upside</span>
+                  <span className="text-right">Score</span>
+                  <span>Pipeline</span>
+                  <span>Created</span>
+                  <span>Status</span>
+                </div>
+                <div className="divide-y">
+                  {visibleItems.map((item) => {
+                    const isSelected = selectedItem?.id === item.id;
+                    return (
+                      <button
+                        key={item.id}
+                        type="button"
+                        onClick={() => setSelectedId(item.id)}
+                        className={`grid w-full grid-cols-[minmax(150px,1.5fr)_88px_70px_64px_108px_82px_86px] items-center gap-3 px-3 py-3 text-left text-xs transition-colors hover:bg-muted/50 ${
+                          isSelected
+                            ? "bg-accent/70 shadow-[inset_3px_0_0_0_var(--color-primary)]"
+                            : ""
+                        }`}
+                        aria-pressed={isSelected}
+                      >
+                        <span className="min-w-0">
+                          <span className="block text-sm font-semibold">
+                            {item.tickers?.symbol ?? "—"}
+                          </span>
+                          <span className="block truncate text-[11px] text-muted-foreground">
+                            {item.tickers?.name ?? "Unknown company"}
+                          </span>
+                        </span>
+                        <span>
+                          <Badge
+                            className={`${recommendationBadgeClass(item.recommendation)} px-2 py-0 text-[10px]`}
+                            variant="outline"
+                          >
+                            {displayLabel(item.recommendation ?? "Watch")}
+                          </Badge>
+                        </span>
+                        <span
+                          className={`text-right font-medium tabular-nums ${
+                            item.upside_pct == null
+                              ? "text-muted-foreground"
+                              : item.upside_pct >= 0
+                                ? "text-emerald-700 dark:text-emerald-400"
+                                : "text-rose-700 dark:text-rose-400"
+                          }`}
                         >
-                          {displayLabel(item.recommendation ?? "Watch")}
-                        </Badge>
-                      </div>
-                      <p className="mt-1 truncate text-sm text-muted-foreground">
-                        {item.tickers?.name ?? "Unknown company"}
-                      </p>
-                    </div>
-                    <Badge variant={item.status === "approved" ? "default" : "secondary"}>
-                      {executedIds.has(item.id)
-                        ? "Paper holding"
-                        : item.status === "approved"
-                          ? "Approved"
-                          : item.status === "discarded"
-                            ? "Rejected"
-                            : "Review"}
-                    </Badge>
-                  </div>
-                  <div className="mt-3 flex items-center justify-between text-xs">
-                    <span className="text-muted-foreground">
-                      {item.tickers?.sector ?? "Sector unavailable"}
-                    </span>
-                    <span
-                      className={
-                        item.upside_pct == null
-                          ? "text-muted-foreground"
-                          : item.upside_pct >= 0
-                            ? "text-emerald-700 dark:text-emerald-400"
-                            : "text-rose-700 dark:text-rose-400"
-                      }
-                    >
-                      {item.upside_pct == null
-                        ? "Upside —"
-                        : `${item.upside_pct >= 0 ? "Upside" : "Downside"} ${Math.abs(
-                            Number(item.upside_pct)
-                          ).toFixed(1)}%`}
-                    </span>
-                  </div>
-                </button>
-              );
-            })}
+                          {item.upside_pct == null
+                            ? "—"
+                            : `${item.upside_pct >= 0 ? "+" : ""}${Number(
+                                item.upside_pct
+                              ).toFixed(1)}%`}
+                        </span>
+                        <span className="text-right font-medium tabular-nums">
+                          {item.quantitative_score == null
+                            ? "—"
+                            : Number(item.quantitative_score).toFixed(1)}
+                        </span>
+                        <span className="truncate text-muted-foreground">
+                          {displayLabel(item.pipeline_stage)}
+                        </span>
+                        <span className="tabular-nums text-muted-foreground">
+                          {formatShortDate(item.created_at)}
+                        </span>
+                        <span>
+                          <Badge
+                            className={`${statusBadgeClass(item, executedIds)} px-2 py-0 text-[10px]`}
+                            variant="outline"
+                          >
+                            {statusLabel(item, executedIds)}
+                          </Badge>
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
           </div>
         </Card>
 
@@ -414,14 +478,11 @@ export function InboxList() {
                     {selectedItem.tickers?.sector ?? "Sector unavailable"}
                   </p>
                 </div>
-                <Badge variant={selectedItem.status === "approved" ? "default" : "secondary"}>
-                  {executedIds.has(selectedItem.id)
-                    ? "Paper holding created"
-                    : selectedItem.status === "approved"
-                      ? "Approved"
-                      : selectedItem.status === "discarded"
-                        ? "Rejected"
-                        : "Pending review"}
+                <Badge
+                  className={statusBadgeClass(selectedItem, executedIds)}
+                  variant="outline"
+                >
+                  {statusLabel(selectedItem, executedIds)}
                 </Badge>
               </div>
 
@@ -465,10 +526,8 @@ export function InboxList() {
                     Review full investment memo
                     <ChevronDown className="h-4 w-4 transition-transform group-open:rotate-180" />
                   </summary>
-                  <div className="border-t px-4 py-4">
-                    <pre className="max-h-80 overflow-auto whitespace-pre-wrap font-sans text-sm leading-6 text-muted-foreground">
+                  <div className="max-h-80 overflow-y-auto whitespace-pre-wrap border-t px-4 py-4 text-sm leading-6 text-muted-foreground">
                       {selectedItem.investment_memo || "No detailed memo is available."}
-                    </pre>
                   </div>
                 </details>
               </section>
@@ -482,7 +541,7 @@ export function InboxList() {
                   }}
                 >
                   <div>
-                    <h3 className="font-semibold">Paper-position details</h3>
+                    <h3 className="font-semibold">Add to paper portfolio</h3>
                     <p className="mt-1 text-sm text-muted-foreground">
                       This records a paper holding; it does not place a live brokerage order.
                     </p>
@@ -532,7 +591,7 @@ export function InboxList() {
                       ) : (
                         <BriefcaseBusiness className="h-4 w-4" />
                       )}
-                      Create paper holding
+                      Add to paper portfolio
                     </Button>
                   </div>
                 </form>
