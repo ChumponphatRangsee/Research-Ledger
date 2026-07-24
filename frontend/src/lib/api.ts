@@ -5,6 +5,8 @@ import { createClient } from "@/lib/supabase/client";
 export type InboxItem = {
   id: string;
   status: string;
+  pipeline_stage: string;
+  quantitative_score: number | null;
   recommendation: string | null;
   memo_summary: string | null;
   fair_value: number | null;
@@ -107,7 +109,7 @@ export async function fetchPortfolio(): Promise<PortfolioHolding[]> {
   return data.holdings;
 }
 
-export async function executeFromInbox(
+export async function createPaperHoldingFromInbox(
   id: string,
   body: { shares: number; cost_basis?: number | null; notes?: string | null }
 ) {
@@ -116,7 +118,7 @@ export async function executeFromInbox(
     headers: await authHeaders(true),
     body: JSON.stringify(body),
   });
-  return parseResponse(res, "Failed to execute portfolio action");
+  return parseResponse(res, "Failed to create paper holding");
 }
 
 export async function runScreener() {
