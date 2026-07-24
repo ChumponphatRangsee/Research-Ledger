@@ -167,3 +167,18 @@ def test_market_data_snapshot_migration_is_backend_only_and_indexed():
     assert "enable row level security" in sql
     assert "revoke all on table public.market_data_snapshots from anon, authenticated" in sql
     assert "to service_role" in sql
+
+
+def test_snapshot_migration_uses_trigger_function_created_earlier():
+    migrations = Path(__file__).parents[2] / "supabase" / "migrations"
+    snapshot_migration = next(migrations.glob("*_market_data_snapshots.sql"))
+    earlier_sql = "\n".join(
+        migration.read_text(encoding="utf-8").lower()
+        for migration in sorted(migrations.glob("*.sql"))
+        if migration.name < snapshot_migration.name
+    )
+    snapshot_sql = snapshot_migration.read_text(encoding="utf-8").lower()
+
+    assert "create or replace function set_updated_at()" in earlier_sql
+    assert "alter function public.set_updated_at()" in earlier_sql
+    assert "execute function public.set_updated_at()" in snapshot_sql

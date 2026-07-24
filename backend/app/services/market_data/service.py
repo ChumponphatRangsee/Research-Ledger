@@ -1,5 +1,6 @@
 """Application-level access to normalized market data."""
 
+import logging
 from collections.abc import Callable
 from datetime import datetime, timedelta, timezone
 
@@ -11,6 +12,7 @@ from app.services.market_data.models import CompanyFinancialSnapshot
 from app.services.market_data.provider import MarketDataProvider
 
 DEFAULT_COMPANY_SNAPSHOT_TTL = timedelta(hours=24)
+logger = logging.getLogger(__name__)
 
 
 def _utc_now() -> datetime:
@@ -63,11 +65,21 @@ class MarketDataService:
         """Return a fresh cached snapshot or fetch and cache a provider result."""
         normalized_symbol = symbol.strip().upper()
         lookup_time = self._clock()
-        cached = self._cache.get_fresh_company_snapshot(
-            normalized_symbol,
-            self._provider_name,
-            now=lookup_time,
-        )
+        try:
+            cached = self._cache.get_fresh_company_snapshot(
+                normalized_symbol,
+                self._provider_name,
+                now=lookup_time,
+            )
+        except Exception as exc:
+            logger.warning(
+                "Market data cache read failed for %s via %s (%s): %s",
+                normalized_symbol,
+                self._provider_name,
+                type(exc).__name__,
+                exc,
+            )
+            cached = None
         if cached is not None:
             return cached
 
@@ -75,10 +87,19 @@ class MarketDataService:
         if snapshot.symbol != normalized_symbol:
             snapshot = snapshot.model_copy(update={"symbol": normalized_symbol})
         fetched_at = self._clock()
-        self._cache.upsert_company_snapshot(
-            snapshot,
-            self._provider_name,
-            fetched_at=fetched_at,
-            expires_at=fetched_at + self._ttl,
-        )
+        try:
+            self._cache.upsert_company_snapshot(
+                snapshot,
+                self._provider_name,
+                fetched_at=fetched_at,
+                expires_at=fetched_at + self._ttl,
+            )
+        except Exception as exc:
+            logger.warning(
+                "Market data cache write failed for %s via %s (%s): %s",
+                normalized_symbol,
+                self._provider_name,
+                type(exc).__name__,
+                exc,
+            )
         return snapshot

@@ -44,6 +44,8 @@ COMMENT ON CONSTRAINT market_data_snapshots_lookup_key
 CREATE INDEX idx_market_data_snapshots_expires_at
   ON public.market_data_snapshots (expires_at);
 
+-- public.set_updated_at() is created by 20250715000000_initial_schema.sql and
+-- its search_path is hardened by 20260722002000_rls_index_function_hardening.sql.
 CREATE TRIGGER trg_market_data_snapshots_updated_at
   BEFORE UPDATE ON public.market_data_snapshots
   FOR EACH ROW EXECUTE FUNCTION public.set_updated_at();

@@ -184,7 +184,9 @@ snapshots by symbol, provider, and `company_snapshot`. A row is fresh only while
 `expires_at` is later than the lookup time. Fresh rows are validated back into
 `CompanyFinancialSnapshot`; a miss or stale row calls the provider and upserts
 the normalized payload with a 24-hour default TTL. Provider failures propagate
-unchanged and are not cached. Missing metrics remain JSON null.
+unchanged and are not cached. Cache read or write failures are logged and
+bypassed so a cache outage or malformed row does not block a healthy provider
+or a successful provider response. Missing metrics remain JSON null.
 
 `market_data_snapshots` is shared backend cache data rather than user-owned
 application data. RLS is enabled, anon/authenticated table access is revoked,

@@ -4,6 +4,7 @@ import pytest
 
 from app.services.market_data import (
     CompanyFinancialSnapshot,
+    InvalidProviderResponseError,
     MarketDataService,
     ProviderUnavailableError,
 )
@@ -71,6 +72,47 @@ class RecordingCache:
         self.upserts.append((snapshot, provider, fetched_at, expires_at))
 
 
+class ErroringCache(RecordingCache):
+    def __init__(
+        self,
+        *,
+        read_error: Exception | None = None,
+        write_error: Exception | None = None,
+    ) -> None:
+        super().__init__()
+        self.read_error = read_error
+        self.write_error = write_error
+
+    def get_fresh_company_snapshot(
+        self,
+        symbol: str,
+        provider: str,
+        *,
+        now: datetime,
+    ) -> CompanyFinancialSnapshot | None:
+        self.lookups.append((symbol, provider, now))
+        if self.read_error is not None:
+            raise self.read_error
+        return None
+
+    def upsert_company_snapshot(
+        self,
+        snapshot: CompanyFinancialSnapshot,
+        provider: str,
+        *,
+        fetched_at: datetime,
+        expires_at: datetime,
+    ) -> None:
+        if self.write_error is not None:
+            raise self.write_error
+        super().upsert_company_snapshot(
+            snapshot,
+            provider,
+            fetched_at=fetched_at,
+            expires_at=expires_at,
+        )
+
+
 NOW = datetime(2026, 7, 24, 9, 0, tzinfo=timezone.utc)
 
 
@@ -127,6 +169,69 @@ def test_service_calls_provider_when_cached_snapshot_is_expired():
     assert actual is fresh
     assert provider.symbols == ["AAPL"]
     assert cache.upserts[0][0] is fresh
+
+
+def test_cache_read_exception_falls_back_to_provider(caplog):
+    expected = CompanyFinancialSnapshot(symbol="MSFT", current_price=420)
+    provider = RecordingProvider(expected)
+    cache = ErroringCache(read_error=RuntimeError("cache unavailable"))
+
+    with caplog.at_level("WARNING"):
+        actual = MarketDataService(
+            provider,
+            cache=cache,
+            clock=lambda: NOW,
+        ).get_company_snapshot("MSFT")
+
+    assert actual is expected
+    assert provider.symbols == ["MSFT"]
+    assert cache.upserts[0][0] is expected
+    assert "Market data cache read failed for MSFT" in caplog.text
+    assert "cache unavailable" in caplog.text
+
+
+def test_malformed_cached_payload_does_not_poison_provider_retrieval(caplog):
+    expected = CompanyFinancialSnapshot(symbol="AAPL", current_price=201)
+    provider = RecordingProvider(expected)
+    cache = ErroringCache(
+        read_error=InvalidProviderResponseError(
+            "invalid cached payload",
+            provider="fake",
+            symbol="AAPL",
+        )
+    )
+
+    with caplog.at_level("WARNING"):
+        actual = MarketDataService(
+            provider,
+            cache=cache,
+            clock=lambda: NOW,
+        ).get_company_snapshot("AAPL")
+
+    assert actual is expected
+    assert provider.symbols == ["AAPL"]
+    assert cache.upserts[0][0] is expected
+    assert "InvalidProviderResponseError" in caplog.text
+    assert "invalid cached payload" in caplog.text
+
+
+def test_cache_upsert_exception_does_not_block_provider_result(caplog):
+    expected = CompanyFinancialSnapshot(symbol="NVDA", current_price=175)
+    provider = RecordingProvider(expected)
+    cache = ErroringCache(write_error=RuntimeError("cache write unavailable"))
+
+    with caplog.at_level("WARNING"):
+        actual = MarketDataService(
+            provider,
+            cache=cache,
+            clock=lambda: NOW,
+        ).get_company_snapshot("NVDA")
+
+    assert actual is expected
+    assert provider.symbols == ["NVDA"]
+    assert cache.upserts == []
+    assert "Market data cache write failed for NVDA" in caplog.text
+    assert "cache write unavailable" in caplog.text
 
 
 def test_service_uses_configured_ttl_for_provider_result():

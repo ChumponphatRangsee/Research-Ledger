@@ -46,7 +46,10 @@ class SupabaseMarketDataSnapshotCache:
     """Persist normalized company snapshots through the backend Supabase client."""
 
     def __init__(self, client: Client | None = None) -> None:
-        self._client = client if client is not None else get_supabase_client()
+        self._client = client
+
+    def _get_client(self) -> Client:
+        return self._client if self._client is not None else get_supabase_client()
 
     def get_fresh_company_snapshot(
         self,
@@ -59,7 +62,8 @@ class SupabaseMarketDataSnapshotCache:
         normalized_symbol = symbol.strip().upper()
         cutoff = now if now is not None else datetime.now(timezone.utc)
         response = (
-            self._client.table(CACHE_TABLE)
+            self._get_client()
+            .table(CACHE_TABLE)
             .select("payload")
             .eq("symbol", normalized_symbol)
             .eq("provider", provider)
@@ -136,7 +140,8 @@ class SupabaseMarketDataSnapshotCache:
             "expires_at": expires_at.isoformat(),
         }
         (
-            self._client.table(CACHE_TABLE)
+            self._get_client()
+            .table(CACHE_TABLE)
             .upsert(payload, on_conflict=LOOKUP_CONFLICT_COLUMNS)
             .execute()
         )
