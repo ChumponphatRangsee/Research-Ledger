@@ -150,7 +150,14 @@ Missing metrics remain null. Available metrics can produce a partial score, whil
 
 ### Current
 
-`backend/app/services/yfinance_client.py` maps yfinance data into a dictionary that is normalized into `FinancialMetrics` for screening. It is called by both screening orchestration and the prototype financial-analysis node. There is no provider interface, market-data service, persistent snapshot cache, or structured provider exception hierarchy.
+`backend/app/services/market_data/` defines the normalized company snapshot, the
+`MarketDataProvider` interface, structured provider exceptions, and
+`MarketDataService`. `YFinanceProvider` owns all direct yfinance access and maps
+provider responses into the normalized snapshot. Quantitative screening depends
+on `MarketDataService`; the prototype financial-analysis node still uses the
+legacy `yfinance_client.py` compatibility facade, which delegates to the
+canonical provider. There is no persistent snapshot cache or TTL/freshness
+behavior yet.
 
 ### Planned
 
