@@ -1,53 +1,23 @@
-"""Normalize loose provider dictionaries into finite, typed metrics."""
+"""Compatibility normalization API for quantitative screening."""
 
-from __future__ import annotations
-
-import math
-from datetime import datetime, timezone
-from numbers import Real
 from typing import Any
 
+from app.services.market_data.normalization import (
+    finite_float,
+    normalize_company_snapshot,
+    ratio_from_percent,
+)
 from app.services.screening.models import FinancialMetrics
 
 
-def finite_float(value: Any) -> float | None:
-    """Return a finite float, preserving unavailable/invalid data as ``None``."""
-    if value is None or isinstance(value, bool):
-        return None
-    if not isinstance(value, Real):
-        try:
-            value = float(value)
-        except (TypeError, ValueError):
-            return None
-    result = float(value)
-    return result if math.isfinite(result) else None
-
-
-def ratio_from_percent(value: Any) -> float | None:
-    """Normalize provider ratios that are sometimes expressed as percentages."""
-    result = finite_float(value)
-    if result is None:
-        return None
-    return result / 100.0 if abs(result) > 10 else result
-
-
 def normalize_financial_metrics(raw: dict[str, Any]) -> FinancialMetrics:
-    """Validate provider output and remove NaN/infinite values."""
-    text_fields = {"symbol", "name", "sector", "industry"}
-    ratio_percent_fields = {"debt_to_equity"}
-    datetime_fields = {"data_as_of"}
-    normalized: dict[str, Any] = {}
+    """Normalize through the provider-neutral market data boundary."""
+    return normalize_company_snapshot(raw)
 
-    for field_name in FinancialMetrics.model_fields:
-        value = raw.get(field_name)
-        if field_name in text_fields or field_name in datetime_fields:
-            normalized[field_name] = value
-        elif field_name in ratio_percent_fields:
-            normalized[field_name] = ratio_from_percent(value)
-        else:
-            normalized[field_name] = finite_float(value)
 
-    normalized["symbol"] = str(raw.get("symbol") or "").strip().upper()
-    normalized["data_as_of"] = raw.get("data_as_of") or datetime.now(timezone.utc)
-    return FinancialMetrics.model_validate(normalized)
+__all__ = [
+    "finite_float",
+    "normalize_financial_metrics",
+    "ratio_from_percent",
+]
 
