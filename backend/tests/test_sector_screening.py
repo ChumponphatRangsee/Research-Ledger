@@ -398,6 +398,14 @@ class FailingProvider:
         )
 
 
+class MissingCache:
+    def get_fresh_company_snapshot(self, *_args, **_kwargs):
+        return None
+
+    def upsert_company_snapshot(self, *_args, **_kwargs):
+        return None
+
+
 def test_screening_integration_persists_ranks_and_selects_top_candidates(monkeypatch):
     client = RecordingClient()
     settings = SimpleNamespace(
@@ -432,7 +440,7 @@ def test_screening_integration_persists_ranks_and_selects_top_candidates(monkeyp
     output = screener.run_quantitative_screen(
         "user-1",
         universe=["MSFT"],
-        market_data_service=MarketDataService(provider),
+        market_data_service=MarketDataService(provider, cache=MissingCache()),
     )
 
     result_inserts = [
@@ -474,7 +482,10 @@ def test_screening_service_failure_preserves_existing_failure_semantics(monkeypa
     output = screener.run_quantitative_screen(
         "user-1",
         universe=["FAIL"],
-        market_data_service=MarketDataService(FailingProvider()),
+        market_data_service=MarketDataService(
+            FailingProvider(),
+            cache=MissingCache(),
+        ),
     )
 
     result_insert = next(

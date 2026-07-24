@@ -14,8 +14,6 @@ from app.services.market_data import (
 )
 from app.services.market_data.providers import YFinanceProvider
 from app.services.market_data.providers import yfinance as yfinance_module
-from app.services.screening.normalization import normalize_financial_metrics
-from app.services.yfinance_client import fetch_financial_metrics
 
 
 class FakeTicker:
@@ -168,14 +166,3 @@ def test_provider_converts_malformed_financial_data_to_invalid_response(monkeypa
 
     assert caught.value.provider == "yfinance"
     assert caught.value.symbol == "BAD"
-
-
-def test_legacy_client_delegates_without_double_normalizing_ratios(monkeypatch):
-    ticker = FakeTicker({"debtToEquity": 1_500})
-    monkeypatch.setattr(yfinance_module.yf, "Ticker", lambda _symbol: ticker)
-
-    raw = fetch_financial_metrics("LEVERED")
-    normalized = normalize_financial_metrics(raw)
-
-    assert raw["debt_to_equity"] == 1_500
-    assert normalized.debt_to_equity == 15.0

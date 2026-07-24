@@ -1,6 +1,7 @@
 # InvestFlow AI Roadmap
 
-This roadmap reflects `main` after merged PR #2 (authentication and ownership hardening) and PR #3 (sector-aware quantitative screening and dashboard).
+This roadmap reflects the implemented repository through the market-data
+provider, service, and Supabase snapshot-cache work.
 
 Status:
 
@@ -17,9 +18,11 @@ The near-term experience should prioritize decision quality over breadth: clear 
 
 ## Next Recommended Task
 
-**Market Data Abstraction + YFinance Adapter + Supabase Snapshot Cache**
+**Repeatable Screener Calibration With Recorded Data**
 
-Introduce the provider boundary without changing screening behavior, move the existing yfinance mapping behind it, and add a normalized, TTL-based snapshot cache. This reduces repeated vendor calls and creates a testable boundary before provider selection or broader screener calibration.
+Run repeatable calibration against the starter universe, inspect ranking quality
+by business model, and record false positives, false negatives, and missing-data
+patterns before changing thresholds or expanding the universe.
 
 ## Phase 1 - Foundation & Security
 
@@ -57,17 +60,17 @@ Introduce the provider boundary without changing screening behavior, move the ex
 - [ ] Calibrate thresholds and ranking quality with recorded real-data runs
 - [ ] Add live-provider integration fixtures or replay tests
 
-## Phase 3 - Market Data Architecture (Current/Next)
+## Phase 3 - Market Data Architecture
 
 - [x] Introduce `MarketDataProvider` abstraction
 - [x] Move yfinance behind `YFinanceProvider`
 - [x] Add `MarketDataService`
 - [x] Add normalized market-data models shared by consumers
 - [x] Add structured provider exceptions
-- [ ] Add Supabase screening/fundamental snapshot cache
-- [ ] Add cache TTL and freshness behavior
+- [x] Add Supabase screening/fundamental snapshot cache
+- [x] Add cache TTL and freshness behavior
 - [x] Remove direct yfinance calls outside the provider layer
-- [ ] Add provider, normalization, failure, cache, and TTL tests
+- [x] Add provider, normalization, failure, cache, and TTL tests
 
 Later in this phase:
 
@@ -76,9 +79,10 @@ Later in this phase:
 - [ ] Add a dedicated quote/history provider if needed
 - [ ] Add a separate SEC EDGAR filings integration
 
-Paid-provider integration is not the immediate task; establish the internal contract and cache first.
+Paid-provider integration remains deferred. Calibrate the existing normalized
+data path and screening results before selecting or adding another provider.
 
-## Phase 4 - Screener Calibration & Expansion
+## Phase 4 - Screener Calibration & Expansion (Current/Next)
 
 - [ ] Run repeatable calibration against the starter universe
 - [ ] Inspect ranking quality by business model

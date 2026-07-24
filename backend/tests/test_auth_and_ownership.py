@@ -490,7 +490,11 @@ def test_quantitative_screen_persists_screening_run_owner(monkeypatch):
     fake_supabase = FakeSupabaseClient([insert_run_query, update_run_query])
     monkeypatch.setattr(screener_service, "get_supabase_client", lambda: fake_supabase)
 
-    result = screener_service.run_quantitative_screen(str(USER_A), universe=[])
+    result = screener_service.run_quantitative_screen(
+        str(USER_A),
+        universe=[],
+        market_data_service=SimpleNamespace(),
+    )
 
     assert result["run_id"] == str(RUN_ID)
     assert insert_run_query.insert_payload["user_id"] == str(USER_A)

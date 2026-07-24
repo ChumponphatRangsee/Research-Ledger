@@ -15,7 +15,9 @@ Next.js frontend
   v
 FastAPI API
   |
-  +-> application/screening modules -> yfinance
+  +-> application/research modules -> MarketDataService
+  |                                  +-> Supabase snapshot cache
+  |                                  +-> YFinanceProvider -> yfinance
   |
   +-> Supabase service-role client -> Postgres
 
@@ -57,7 +59,9 @@ Stock Universe
   -> Re-evaluation
 ```
 
-The flow is implemented through human review and basic paper-holding creation. Market-data abstraction, substantive sourced AI research, thesis tracking, and re-evaluation are planned.
+The flow is implemented through human review and basic paper-holding creation.
+The market-data abstraction and persistent freshness cache are implemented;
+substantive sourced AI research, thesis tracking, and re-evaluation are planned.
 
 ## Backend Layers
 
@@ -120,8 +124,9 @@ JWT user
 
 ```text
 Ticker
-  -> yfinance metric mapping
-  -> FinancialMetrics normalization
+  -> MarketDataService
+  -> Fresh Supabase snapshot or YFinanceProvider fallback
+  -> Normalized FinancialMetrics
   -> Business Model Classifier
   -> Strategy Registry
   -> Eligibility Checks
@@ -152,35 +157,42 @@ Missing metrics remain null. Available metrics can produce a partial score, whil
 
 `backend/app/services/market_data/` defines the normalized company snapshot, the
 `MarketDataProvider` interface, structured provider exceptions, and
-`MarketDataService`. `YFinanceProvider` owns all direct yfinance access and maps
-provider responses into the normalized snapshot. Quantitative screening depends
-on `MarketDataService`; the prototype financial-analysis node still uses the
-legacy `yfinance_client.py` compatibility facade, which delegates to the
-canonical provider. There is no persistent snapshot cache or TTL/freshness
-behavior yet.
-
-### Planned
+`MarketDataService`. Quantitative screening and the prototype financial-analysis
+node both depend on this service. `YFinanceProvider` is the only module that
+imports yfinance directly and maps provider responses into the normalized
+snapshot. There is no paid-provider integration.
 
 ```text
-Screener / Research / Paper Portfolio
-                 |
-                 v
-          MarketDataService
-                 |
-                 v
-      MarketDataProvider interface
-            /             \
-           v               v
- YFinanceProvider     Future providers
-            \             /
-             v           v
-          Normalized Models
-                 |
-                 v
-       Supabase Snapshot Cache
+Screener / Research
+        |
+        v
+MarketDataService
+    /          \
+   v            v
+Fresh cache   Cache miss/stale
+   ^            |
+   |            v
+   |      MarketDataProvider
+   |            |
+   |            v
+   +---- normalized snapshot
+          from YFinanceProvider
 ```
 
-Consumers should depend on normalized internal models, never provider response shapes. Cache records need source, observation time, retrieval time, and TTL/freshness semantics.
+`MarketDataService` normalizes requested symbols to uppercase and keys company
+snapshots by symbol, provider, and `company_snapshot`. A row is fresh only while
+`expires_at` is later than the lookup time. Fresh rows are validated back into
+`CompanyFinancialSnapshot`; a miss or stale row calls the provider and upserts
+the normalized payload with a 24-hour default TTL. Provider failures propagate
+unchanged and are not cached. Missing metrics remain JSON null.
+
+`market_data_snapshots` is shared backend cache data rather than user-owned
+application data. RLS is enabled, anon/authenticated table access is revoked,
+and only the backend service-role client manages rows. The cache records the
+provider, observation time (`data_as_of`), retrieval time (`fetched_at`), and
+freshness cutoff (`expires_at`). Service-role credentials remain backend-only.
+
+Consumers depend on normalized internal models, never provider response shapes.
 
 Filings are a separate concern:
 
@@ -214,7 +226,7 @@ LangGraph and the persistence breakpoint are implemented. Ownership and optional
 The research quality is prototype-only:
 
 - the Researcher returns placeholder qualitative text and no sources;
-- the Financial Analyst formats a small yfinance metric subset;
+- the Financial Analyst formats a small normalized market-data subset;
 - the Valuator applies a simplified normalized-P/E calculation;
 - the Decision Maker derives BUY/HOLD/PASS from calculated upside and emits a basic memo.
 
@@ -225,6 +237,8 @@ No node currently calls a configured LLM. Structured sourced research, explicit 
 ### Current tables
 
 - `tickers`: shared ticker metadata and last-screened timestamp;
+- `market_data_snapshots`: shared backend-managed normalized snapshot cache with
+  provider, observation, retrieval, and expiry timestamps;
 - `screening_runs`: user-owned run criteria, status, counters, and timing;
 - `screening_results`: per-run scores, confidence, normalized metrics, explanations, warnings, and failures;
 - `analysis_inbox`: user-owned prototype research output and human-review status;
@@ -285,7 +299,7 @@ Any remaining “execute trade” language is legacy terminology. It means inser
 
 Near-term evolution should stay inside the existing monorepo:
 
-1. market-data provider interface, service, normalized models, and snapshot cache;
+1. market-data cache observability and deliberate production-provider evaluation;
 2. calibrated sector and later peer-relative scoring;
 3. structured research outputs with evidence and citations;
 4. analysis history/versioning;
