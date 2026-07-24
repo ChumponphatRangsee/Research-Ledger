@@ -6,6 +6,7 @@ import { ChevronDown, ChevronUp, Loader2, Play } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { PageHeader } from "@/components/layout/page-header";
 import {
   ApiError,
   fetchLatestScreeningRun,
@@ -90,12 +91,11 @@ export function ScreenerDashboard() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-3xl font-bold tracking-tight">Quantitative Screener</h1>
-        <p className="mt-2 text-muted-foreground">
-          Sector-aware deterministic scoring before AI research begins.
-        </p>
-      </div>
+      <PageHeader
+        eyebrow="Quantitative research"
+        title="Screening Runs"
+        description="Run sector-aware deterministic screening and inspect ranked candidates before AI research begins."
+      />
 
       <Card>
         <CardHeader>

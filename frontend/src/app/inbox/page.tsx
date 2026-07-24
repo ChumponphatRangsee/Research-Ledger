@@ -1,14 +1,14 @@
 import { InboxList } from "@/components/inbox/inbox-list";
+import { PageHeader } from "@/components/layout/page-header";
 
 export default function InboxPage() {
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-3xl font-bold tracking-tight">Analysis Inbox</h1>
-        <p className="mt-2 text-muted-foreground">
-          AI-analyzed stocks awaiting your decision. Approve to stage for portfolio execution, or discard.
-        </p>
-      </div>
+      <PageHeader
+        eyebrow="Human review"
+        title="Analysis Inbox"
+        description="Review AI-assisted research, approve or reject the thesis, and create paper holdings only after a human decision."
+      />
       <InboxList />
     </div>
   );

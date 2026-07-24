@@ -1,14 +1,14 @@
+import { PageHeader } from "@/components/layout/page-header";
 import { PortfolioList } from "@/components/portfolio/portfolio-list";
 
 export default function PortfolioPage() {
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-3xl font-bold tracking-tight">Portfolio</h1>
-        <p className="mt-2 text-muted-foreground">
-          Holdings created from approved inbox recommendations.
-        </p>
-      </div>
+      <PageHeader
+        eyebrow="Paper portfolio"
+        title="Portfolio"
+        description="Monitor active paper holdings created from reviewed and approved investment analyses."
+      />
       <PortfolioList />
     </div>
   );

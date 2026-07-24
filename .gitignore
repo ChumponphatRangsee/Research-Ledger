@@ -8,6 +8,7 @@ node_modules/
 out/
 dist/
 build/
+frontend/tsconfig.tsbuildinfo
 *.egg-info/
 __pycache__/
 *.py[cod]
