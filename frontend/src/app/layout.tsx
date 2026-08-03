@@ -16,8 +16,8 @@ const geistMono = Geist_Mono({
 
 export const metadata: Metadata = {
   title: {
-    default: "InvestFlow AI",
-    template: "%s | InvestFlow AI",
+    default: "Research Ledger",
+    template: "%s | Research Ledger",
   },
   description: "AI-assisted investment research with human-in-the-loop decisions",
 };

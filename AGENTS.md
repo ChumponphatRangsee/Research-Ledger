@@ -1,8 +1,8 @@
-# InvestFlow AI Agent Guide
+# Research Ledger Agent Guide
 
 ## Project Mission
 
-InvestFlow AI is an AI-assisted investment research platform. It helps authenticated users discover, quantitatively screen, research, review, and track investment ideas.
+Research Ledger is an AI-assisted investment research workspace. It helps authenticated users discover, quantitatively screen, research, review, and track investment ideas.
 
 The intended flow is:
 

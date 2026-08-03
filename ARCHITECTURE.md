@@ -1,4 +1,4 @@
-# InvestFlow AI Architecture
+# Research Ledger Architecture
 
 This document separates the implemented system from intended boundaries. Supabase migrations remain authoritative for exact schema; see [ROADMAP.md](ROADMAP.md) for implementation order.
 

@@ -1,4 +1,4 @@
-# InvestFlow AI Roadmap
+# Research Ledger Roadmap
 
 This roadmap reflects the implemented repository through the market-data
 provider, service, and Supabase snapshot-cache work.
@@ -12,7 +12,7 @@ Status:
 
 ## Product Strategy
 
-InvestFlow AI is a guided investment research workflow, not a financial data terminal or an autonomous trading bot. The product should help an authenticated user move from quantitative discovery to sourced AI research, human review, paper-portfolio tracking, and thesis re-evaluation.
+Research Ledger is an AI-assisted investment research workspace, not a financial data terminal or an autonomous trading bot. It should help an authenticated user move from quantitative discovery to sourced AI research, human review, paper-portfolio tracking, and thesis re-evaluation.
 
 The near-term experience should prioritize decision quality over breadth: clear screening evidence, structured research memos, citations and freshness, explicit bull/base/bear thinking, documented risks, thesis invalidation criteria, and human approval before any paper holding is created.
 
