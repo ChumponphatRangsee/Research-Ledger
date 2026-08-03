@@ -1,12 +1,13 @@
 """Agent 2: Analyze financial statements."""
 
 from app.agents.state import ResearchState
-from app.services.yfinance_client import fetch_financial_metrics
+from app.services.market_data import MarketDataService
 
 
 def financial_analyst_node(state: ResearchState) -> ResearchState:
     symbol = state["ticker_symbol"]
-    metrics = fetch_financial_metrics(symbol)
+    snapshot = MarketDataService().get_company_snapshot(symbol)
+    metrics = snapshot.model_dump(mode="json")
     return {
         **state,
         "financial_metrics": metrics,

@@ -208,24 +208,13 @@ def _fetch_raw_snapshot(symbol: str) -> dict[str, Any]:
 class YFinanceProvider:
     """Market data provider backed by yfinance."""
 
+    provider_name = PROVIDER_NAME
+
     def get_company_snapshot(self, symbol: str) -> CompanyFinancialSnapshot:
         """Return a normalized company and financial snapshot."""
-        raw = self.get_legacy_financial_metrics(symbol)
         try:
+            raw = _fetch_raw_snapshot(symbol)
             return normalize_company_snapshot(raw)
-        except MarketDataProviderError:
-            raise
-        except Exception as exc:
-            raise InvalidProviderResponseError(
-                "Unable to normalize yfinance market data",
-                provider=PROVIDER_NAME,
-                symbol=symbol,
-            ) from exc
-
-    def get_legacy_financial_metrics(self, symbol: str) -> dict[str, Any]:
-        """Return the former raw mapping for compatibility until Issue 3."""
-        try:
-            return _fetch_raw_snapshot(symbol)
         except MarketDataProviderError:
             raise
         except (AttributeError, KeyError, TypeError, ValueError, OverflowError) as exc:

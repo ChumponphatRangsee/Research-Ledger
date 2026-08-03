@@ -16,7 +16,7 @@ def create_app() -> FastAPI:
     settings = get_settings()
     app = FastAPI(
         title=settings.app_name,
-        description="AI orchestration and financial data crunching for InvestFlow-AI",
+        description="AI-assisted investment research workspace",
         version="0.1.0",
         lifespan=lifespan,
     )

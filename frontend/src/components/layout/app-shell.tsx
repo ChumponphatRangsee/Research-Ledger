@@ -41,7 +41,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           </div>
           <div className="min-w-0">
             <Link href="/" className="block truncate text-sm font-semibold tracking-tight">
-              InvestFlow AI
+              Research Ledger
             </Link>
             <p className="truncate text-[11px] text-muted-foreground">Analyst Workbench</p>
           </div>

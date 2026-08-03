@@ -1,5 +1,9 @@
 """Provider-neutral market data contracts."""
 
+from app.services.market_data.cache import (
+    CompanySnapshotCache,
+    SupabaseMarketDataSnapshotCache,
+)
 from app.services.market_data.exceptions import (
     InvalidProviderResponseError,
     MarketDataProviderError,
@@ -13,6 +17,7 @@ from app.services.market_data.provider import MarketDataProvider
 from app.services.market_data.service import MarketDataService
 
 __all__ = [
+    "CompanySnapshotCache",
     "CompanyFinancialSnapshot",
     "InvalidProviderResponseError",
     "MarketDataProvider",
@@ -22,4 +27,5 @@ __all__ = [
     "ProviderTimeoutError",
     "ProviderUnavailableError",
     "SymbolNotFoundError",
+    "SupabaseMarketDataSnapshotCache",
 ]

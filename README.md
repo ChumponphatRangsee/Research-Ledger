@@ -1,8 +1,8 @@
-# InvestFlow-AI
+# Research Ledger
 
-A guided investment research workflow combining sector-aware quantitative screening, multi-agent AI analysis, human review, and paper-portfolio thesis tracking.
+Research Ledger is an AI-assisted investment research workspace combining sector-aware quantitative screening, multi-agent AI analysis, human review, and paper-portfolio thesis tracking.
 
-InvestFlow AI is not a financial data terminal, autonomous trading bot, or brokerage execution system. Its intended flow is:
+Research Ledger is not a financial data terminal, autonomous trading bot, or brokerage execution system. Its intended flow is:
 
 ```text
 Discover -> Quantitative Screen -> AI Research -> Human Review
@@ -13,7 +13,7 @@ Discover -> Quantitative Screen -> AI Research -> Human Review
 
 ```text
 +--------------------------------------------------------------------------+
-|                         InvestFlow-AI Monorepo                           |
+|                    Research Ledger Monorepo                              |
 +------------------------------+-------------------------------------------+
 | frontend/ (Next.js 15)       | backend/ (FastAPI)                        |
 | - Dashboard (Tremor)         | - REST API                                 |
@@ -100,7 +100,7 @@ Or use the local Postgres container. Migrations auto-apply on first boot.
 ## Project Structure
 
 ```text
-InvestFlow-AI/
+InvestFlow-AI/  # repository name retained pending a future GitHub rename
 |-- docker-compose.yml
 |-- .env.example
 |-- frontend/
