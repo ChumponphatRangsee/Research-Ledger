@@ -1,7 +1,9 @@
 # Research Ledger Roadmap
 
 This roadmap reflects the implemented repository through the market-data
-provider, service, and Supabase snapshot-cache work.
+provider, service, and Supabase snapshot-cache work, plus the accepted
+portfolio migration contract in
+[ADR 0001](docs/adr/0001-supabase-portfolio-migration-contract.md).
 
 Status:
 
@@ -14,15 +16,16 @@ Status:
 
 Research Ledger is an AI-assisted investment research workspace, not a financial data terminal or an autonomous trading bot. It should help an authenticated user move from quantitative discovery to sourced AI research, human review, paper-portfolio tracking, and thesis re-evaluation.
 
-The near-term experience should prioritize decision quality over breadth: clear screening evidence, structured research memos, citations and freshness, explicit bull/base/bear thinking, documented risks, thesis invalidation criteria, and human approval before any paper holding is created.
+The near-term experience should prioritize decision quality over breadth: an auditable transaction ledger, deterministic portfolio context, clear screening evidence, structured research memos, citations and freshness, explicit bull/base/bear thinking, documented risks, thesis invalidation criteria, and human approval before any portfolio action.
 
 ## Next Recommended Task
 
-**Repeatable Screener Calibration With Recorded Data**
+**PR 1 - Portfolio Ledger Foundation**
 
-Run repeatable calibration against the starter universe, inspect ranking quality
-by business model, and record false positives, false negatives, and missing-data
-patterns before changing thresholds or expanding the universe.
+Add universal assets, investment accounts, transaction drafts, immutable
+confirmed transactions, import batches, import errors, ownership indexes, RLS,
+and explicit Data API grants. Preserve the legacy `portfolios` and `tickers`
+tables. Do not start PR 2 in the same branch or pull request.
 
 ## Phase 1 - Foundation & Security
 
@@ -82,7 +85,91 @@ Later in this phase:
 Paid-provider integration remains deferred. Calibrate the existing normalized
 data path and screening results before selecting or adding another provider.
 
-## Phase 4 - Screener Calibration & Expansion (Current/Next)
+## Phase 4 - Portfolio Migration (Current/Next)
+
+The migration is delivered as one focused branch and pull request per item.
+Google Sheets remains writable through staging and dual-run, then becomes a
+read-only archive only after reconciliation succeeds.
+
+### PR 0 - Architecture Contract
+
+- [x] Record Supabase as the target source of truth and THB as base currency
+- [x] Retain weighted-average cost by account and asset
+- [x] Define confirmed transactions as immutable and corrections as linked reversals
+- [x] Require Draft -> Human review -> Confirm for screenshots and AI extraction
+- [x] Preserve `portfolios` as legacy paper holdings and `tickers` as the screener model
+- [x] Define universal `assets` and keep its ticker relationship optional
+- [x] Separate quantitative, research, and opportunity scores
+- [x] Record security, reconciliation, delivery, and cutover gates in ADR 0001
+
+### PR 1 - Portfolio Ledger Foundation
+
+- [ ] Add `assets` for Stock, ETF, Crypto, Cash, Bond, Mutual fund, and Other
+- [ ] Add `investment_accounts`
+- [ ] Add owner-scoped `transaction_drafts`
+- [ ] Add immutable `transactions` with BUY, SELL, DIVIDEND, STAKING, INTEREST, TRANSFER_IN, TRANSFER_OUT, FEE, and REVERSAL
+- [ ] Add `transaction_import_batches` and `transaction_import_errors`
+- [ ] Use PostgreSQL `numeric` for quantity, price, fee, FX, cost basis, and P&L
+- [ ] Add source identifiers, raw source data, and unique source fingerprints
+- [ ] Add RLS, ownership indexes, least-privilege explicit grants, and cross-user tests
+- [ ] Preserve the legacy `portfolios` table
+
+### PR 2 - Google Sheets Migration Staging
+
+- [ ] Re-export the current 15-tab Google Sheet; do not import the old 7-tab workbook as production truth
+- [ ] Stage rows with original row number and raw data preserved
+- [ ] Normalize transaction types, symbols, currencies, asset classes, and account names
+- [ ] Deduplicate by `source_fingerprint`
+- [ ] Isolate ambiguous rows in `transaction_import_errors`
+- [ ] Produce a dry-run report before promoting any transaction
+- [ ] Verify crypto fee units, stored historical FX, formula-derived prices, CRWD/MSFT history, and non-negative positions
+
+### PR 3 - Deterministic Portfolio Calculation Engine
+
+- [ ] Replay confirmed transactions chronologically by account and asset
+- [ ] Calculate quantity, weighted-average cost, THB cost basis, realized P&L, unrealized P&L, income, cash flows, and allocations
+- [ ] Add rebuildable projections and `security_invoker = true` views
+- [ ] Recalculate from ledger rows rather than importing formula-derived summary tabs
+
+### PR 4 - Transaction Workflow
+
+- [ ] Add draft create/read/update and atomic idempotent confirmation APIs
+- [ ] Add transaction list and linked reversal/correction APIs
+- [ ] Add Transactions, Draft Review, Transaction Detail, Correction/Reversal, and Import Errors pages
+- [ ] Prevent AI or screenshot extraction from bypassing human confirmation
+
+### PR 5 - Prices, FX, and Performance (Portfolio Migration MVP)
+
+- [ ] Add asset price, FX rate, portfolio valuation, and benchmark snapshots
+- [ ] Extend `MarketDataService` for stock, ETF, crypto, FX to THB, historical prices, and SPY benchmark data
+- [ ] Rebuild performance from transactions and historical valuations
+- [ ] Complete MVP reconciliation and dual-run readiness checks
+
+### PR 6 - Allocation, DCA, and Risk
+
+- [ ] Add versioned investor context, target allocations, DCA plans, risk limits, and risk snapshots
+- [ ] Add allocation-gap, concentration, theme-exposure, DCA, and model-check views
+- [ ] Read portfolio context from Supabase before asking the user for missing or stale inputs
+
+### PR 7 - Stock Screener Migration
+
+- [ ] Migrate sector KPI definitions, discovery runs/candidates, watchlists, valuation scenarios, and buy zones
+- [ ] Keep quantitative, research, and opportunity scores independent
+- [ ] Resume repeatable screener calibration before expanding the universe
+
+### PR 8 - Structured AI Research and Thesis
+
+- [ ] Add versioned scorecards, sources, analyses, theses, revisions, recommendations, and AI runs
+- [ ] Persist facts, assumptions, estimates, judgment, citations, freshness, scenarios, sizing rationale, and thesis invalidation
+- [ ] Preserve the portfolio-context snapshot and prompt/model version used for every analysis
+
+### PR 9 - Scheduling and Cutover
+
+- [ ] Add owner-aware scheduled jobs, monitoring, and failure reporting
+- [ ] Pass every reconciliation, idempotency, RLS, security-advisor, pgTAP, and application integration gate
+- [ ] Complete dual-run before making Google Sheets a read-only archive
+
+## Phase 5 - Screener Calibration & Expansion
 
 - [ ] Run repeatable calibration against the starter universe
 - [ ] Inspect ranking quality by business model
@@ -93,7 +180,7 @@ data path and screening results before selecting or adding another provider.
 - [ ] Add peer-group classification
 - [ ] Add peer-relative percentile scoring after sector strategies are calibrated
 
-## Phase 5 - Guided AI Research + Investment Memo
+## Phase 6 - Guided AI Research + Investment Memo
 
 - [x] Create a LangGraph pipeline skeleton: Researcher -> Financial Analyst -> Valuator -> Decision Maker
 - [x] Persist basic prototype outputs to the owner-scoped analysis inbox
@@ -111,7 +198,7 @@ data path and screening results before selecting or adding another provider.
 - [ ] Add thesis invalidation criteria
 - [ ] Add analysis history and versioning
 
-## Phase 6 - Investment Workflow
+## Phase 7 - Investment Workflow
 
 - [x] Provide an owner-scoped analysis inbox
 - [x] Provide pending-only approve and reject/discard actions
@@ -128,7 +215,7 @@ data path and screening results before selecting or adding another provider.
 
 The current `portfolios` rows are paper holdings only. They are not evidence of brokerage execution.
 
-## Phase 7 - Reliability & Evaluation
+## Phase 8 - Reliability & Evaluation
 
 - [ ] Centralize and test deterministic financial calculations
 - [ ] Add an AI/model evaluation suite

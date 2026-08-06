@@ -18,9 +18,10 @@ It is not a live brokerage or automated trading system. The current portfolio en
 Use this order:
 
 1. GitHub code and Supabase migrations define what currently exists.
-2. [ROADMAP.md](ROADMAP.md) defines intended implementation order.
-3. [ARCHITECTURE.md](ARCHITECTURE.md) defines architectural constraints.
-4. [README.md](README.md) provides setup and a high-level overview.
+2. [ADR 0001](docs/adr/0001-supabase-portfolio-migration-contract.md) defines the accepted portfolio migration contract; it does not mean the planned ledger schema exists yet.
+3. [ROADMAP.md](ROADMAP.md) defines intended implementation order.
+4. [ARCHITECTURE.md](ARCHITECTURE.md) defines architectural constraints.
+5. [README.md](README.md) provides setup and a high-level overview.
 
 The README contains some stale descriptions. If code, migrations, tests, and documentation disagree, inspect the implementation and recent relevant commits or pull requests, then reconcile the documentation before coding.
 
@@ -31,8 +32,10 @@ The README contains some stale descriptions. If code, migrations, tests, and doc
 - `supabase/migrations/` is authoritative for the database schema and RLS.
 - Sector-aware screening, persistent results, top-N selection, and the screener dashboard exist.
 - Authentication and explicit single-user ownership exist across API routes, Celery, LangGraph state, and persistence.
-- Market data still comes directly from `backend/app/services/yfinance_client.py`; the provider/service/cache architecture is planned.
+- Market data flows through `MarketDataService`, the Supabase snapshot cache, and `YFinanceProvider`.
 - The LangGraph flow exists, but its researcher is a placeholder and its valuation/decision logic is only a prototype. Do not present it as production-grade AI research.
+- `portfolios` is the existing legacy paper-holding implementation. Preserve it until a later, explicitly scoped migration replaces its responsibilities.
+- The portfolio-ledger schema, Google Sheets import, transaction workflow, calculation engine, and dashboard changes are planned; ADR 0001 documents their contract but does not implement them.
 
 ## Before Coding
 
@@ -62,6 +65,7 @@ These are hard constraints:
 - Derive authenticated ownership from verified Supabase JWT identity.
 - Never trust a client-supplied `user_id`.
 - Preserve Supabase RLS as defense in depth.
+- Treat explicit database grants and RLS as separate, required controls for every exposed object.
 - Preserve service-role boundaries. Service-role credentials are backend-only and must never reach the frontend.
 - Pass ownership explicitly through API, Celery task arguments, LangGraph state, and persisted rows.
 - Scope reads and mutations to the authenticated owner, including `screening_runs`, `analysis_inbox`, and `portfolios`.
@@ -79,6 +83,21 @@ Never weaken JWT verification, ownership checks, RLS, or migration safeguards to
 - Mark unsupported business models explicitly instead of guessing a specialist score.
 - Prefer deterministic code for calculations, normalization, ranking, and eligibility.
 - Keep provider-specific field names and raw response shapes out of domain logic.
+
+## Portfolio Data Rules
+
+These rules apply to all future portfolio migration work:
+
+- Supabase Postgres is the target source of truth for portfolio data. Google Sheets remains writable during migration and dual-run, and becomes read-only only after every reconciliation gate in ADR 0001 passes.
+- Use THB as the portfolio base currency while preserving native transaction currency and historical FX inputs.
+- Use a universal `assets` model that supports stocks and crypto and can extend to other asset classes. Preserve `tickers` as the screener identity model.
+- Use weighted-average cost accounting by investment account and asset.
+- Use a Draft -> Human review -> Confirm workflow. Imported, manually entered, screenshot-extracted, and AI-proposed transactions must begin as drafts.
+- Confirmed transactions are immutable. Never update or delete one in place; corrections require linked reversal or correcting transactions.
+- Derive positions, balances, cost basis, P&L, cash flows, and allocation deterministically from confirmed transactions.
+- Preserve the existing `portfolios` implementation until a later scoped migration explicitly retires it.
+- Complete Portfolio Migration before Screener Expansion. Calibration may continue only where the roadmap explicitly permits it, but do not expand the universe first.
+- Do not combine PR 0 documentation work with migrations, tables, APIs, dashboard changes, or PR 1 implementation.
 
 ## Market Data Rules
 
@@ -107,6 +126,7 @@ Providers must return normalized internal models and structured failures. Once t
 - Make schema changes through ordered Supabase migrations.
 - Treat migrations as authoritative for exact tables, columns, constraints, indexes, foreign keys, and RLS.
 - Preserve ownership foreign keys and RLS policies.
+- Grant Data API privileges explicitly and only per required role and operation; RLS does not replace grants.
 - Add supporting indexes when access patterns require them.
 - Do not make manual production schema edits when a migration is appropriate.
 
@@ -120,7 +140,8 @@ Add or update tests proportional to the change, especially for:
 - missing or malformed financial data;
 - provider failures, normalization, caching, and TTL behavior;
 - Celery and LangGraph ownership propagation;
-- migrations and database integration.
+- migrations and database integration;
+- immutable confirmed transactions, reversal/correction behavior, import idempotency, weighted-average calculations, and reconciliation gates.
 
 Run the narrow tests first, then the relevant backend/frontend suite. Do not claim tests passed if dependencies or infrastructure prevented execution.
 

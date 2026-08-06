@@ -37,6 +37,16 @@ Discover -> Quantitative Screen -> AI Research -> Human Review
 5. User reviews on the **Inbox** page and can approve or discard the analysis.
 6. Approved items can create a user-owned **paper holding** in the portfolio. The legacy backend route name uses `execute`, but this is not broker execution or a live trade.
 
+## Portfolio Migration Contract
+
+[ADR 0001](docs/adr/0001-supabase-portfolio-migration-contract.md) establishes Supabase Postgres as the target source of truth for portfolio data. The target ledger uses THB as its base currency, weighted-average cost by account and asset, and a universal asset model covering stocks, crypto, and later asset classes.
+
+Transactions follow Draft -> Human review -> Confirm. Confirmed transactions are immutable; mistakes are handled with linked reversal or correcting transactions. Every exposed user-owned database object requires both owner-scoped RLS and explicit least-privilege grants.
+
+Google Sheets remains writable during migration and dual-run. It becomes a read-only archive only after the contract's reconciliation, idempotency, calculation, and security gates pass. Portfolio Migration precedes Screener Expansion in the [roadmap](ROADMAP.md).
+
+PR 0 changes documentation only. It adds no Supabase migration or table, changes no dashboard code, and preserves the current `portfolios` paper-holding implementation.
+
 ## Quick Start
 
 ### 1. Environment
@@ -97,12 +107,15 @@ supabase db push
 
 Or use the local Postgres container. Migrations auto-apply on first boot.
 
+ADR 0001 is a contract for future portfolio migrations; PR 0 does not add a migration or change the current schema.
+
 ## Project Structure
 
 ```text
 InvestFlow-AI/  # repository name retained pending a future GitHub rename
 |-- docker-compose.yml
 |-- .env.example
+|-- docs/adr/               # accepted architecture decision records
 |-- frontend/
 |   |-- src/app/              # Next.js App Router pages
 |   |-- src/components/       # shadcn/ui + domain components

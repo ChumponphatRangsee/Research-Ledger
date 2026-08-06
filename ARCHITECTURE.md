@@ -257,6 +257,31 @@ auth.users
 
 Migrations enforce ownership foreign keys, RLS, indexes, a unique result per run/ticker, and at-most-once paper-holding creation from an approved inbox item. Supabase migrations are the authoritative source for exact schema.
 
+## Portfolio Migration Contract
+
+[ADR 0001](docs/adr/0001-supabase-portfolio-migration-contract.md) is the accepted contract for the Google Sheets to Supabase migration. The current `portfolios` table remains a legacy paper-holding projection and is not the new ledger.
+
+Target data flow:
+
+```text
+Google Sheets export
+  -> import batch and staging validation
+  -> transaction drafts or import errors
+  -> human-confirmed immutable transactions
+  -> deterministic ledger replay
+  -> positions / cost basis / P&L / cash flows / allocation
+  -> FastAPI and security-invoker views
+  -> Next.js portfolio experience and AI portfolio context
+```
+
+The target portfolio identity model is `assets`, not `tickers`. `assets` supports Stock, ETF, Crypto, Cash, Bond, Mutual fund, and Other. A US stock asset may optionally map one-to-one to an existing screener `ticker`; other asset classes remain independent.
+
+The ledger uses THB as base currency and weighted-average cost by account and asset. Confirmed transactions are append-only; a mistake produces a linked reversal/correction transaction. All quantity, price, fee, FX, cost-basis, and P&L values use PostgreSQL `numeric`. Derived positions and performance are rebuildable projections, not manually edited truth.
+
+Transactions extracted from screenshots or proposed by AI remain drafts until human confirmation. Confirmation must be atomic and idempotent. AI has no route or database policy that can confirm a transaction or place a live trade.
+
+User ownership continues to originate from the verified JWT. New exposed tables require RLS, indexed ownership predicates, least-privilege explicit grants, and cross-user tests. User-facing views use `security_invoker = true`. Service-role access remains backend-only and every query still includes explicit owner scoping.
+
 ## Background Jobs
 
 ### Current
@@ -301,10 +326,10 @@ Any remaining “execute trade” language is legacy terminology. It means inser
 
 Near-term evolution should stay inside the existing monorepo:
 
-1. market-data cache observability and deliberate production-provider evaluation;
-2. calibrated sector and later peer-relative scoring;
-3. structured research outputs with evidence and citations;
-4. analysis history/versioning;
-5. paper transactions, thesis tracking, and re-evaluation.
+1. universal assets, investment accounts, immutable transactions, staging, and import errors;
+2. deterministic positions, weighted-average cost, P&L, cash flows, allocation, and reconciliation;
+3. draft/confirm/reversal workflows, prices, FX, performance, DCA, and risk controls;
+4. calibrated sector and later peer-relative scoring after the portfolio migration MVP;
+5. structured research outputs, evidence, citations, thesis history, and re-evaluation.
 
 Do not introduce speculative microservices before these boundaries and workflows are proven.
