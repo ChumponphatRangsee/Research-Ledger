@@ -45,7 +45,11 @@ Transactions follow Draft -> Human review -> Confirm. Confirmed transactions are
 
 Google Sheets remains writable during migration and dual-run. It becomes a read-only archive only after the contract's reconciliation, idempotency, calculation, and security gates pass. Portfolio Migration precedes Screener Expansion in the [roadmap](ROADMAP.md).
 
-PR 0 changes documentation only. It adds no Supabase migration or table, changes no dashboard code, and preserves the current `portfolios` paper-holding implementation.
+PR 1 adds the database-only portfolio-ledger foundation: owner-scoped assets,
+investment accounts, mutable transaction drafts, immutable confirmed
+transactions, and import batch/error metadata. It preserves the current
+`portfolios` paper-holding implementation and adds no import process,
+calculation engine, API, or dashboard workflow.
 
 ## Quick Start
 
@@ -105,9 +109,18 @@ Apply migrations to a hosted Supabase project:
 supabase db push
 ```
 
-Or use the local Postgres container. Migrations auto-apply on first boot.
+Or use a reviewed Supabase Cloud migration workflow. Do not apply unreviewed
+migrations directly to a production project.
 
-ADR 0001 is a contract for future portfolio migrations; PR 0 does not add a migration or change the current schema.
+Database tests use pgTAP and live under `supabase/tests/database/`. With a
+disposable test database containing all migrations, run:
+
+```bash
+supabase test db
+```
+
+ADR 0001 remains the migration contract. The PR 1 migration implements only
+its schema and security foundation; Google Sheets staging begins in PR 2.
 
 ## Project Structure
 
@@ -128,7 +141,8 @@ InvestFlow-AI/  # repository name retained pending a future GitHub rename
 |       |-- workers/          # Celery app + tasks
 |       `-- db/               # Supabase client
 `-- supabase/
-    `-- migrations/           # PostgreSQL schema + RLS policies
+    |-- migrations/           # PostgreSQL schema + RLS policies
+    `-- tests/database/       # pgTAP schema, ownership, RLS, and integrity tests
 ```
 
 ## API Endpoints

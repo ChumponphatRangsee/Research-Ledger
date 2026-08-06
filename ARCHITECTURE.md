@@ -244,7 +244,18 @@ No node currently calls a configured LLM. Structured sourced research, explicit 
 - `screening_runs`: user-owned run criteria, status, counters, and timing;
 - `screening_results`: per-run scores, confidence, normalized metrics, explanations, warnings, and failures;
 - `analysis_inbox`: user-owned prototype research output and human-review status;
-- `portfolios`: user-owned paper holdings created from approved inbox items.
+- `portfolios`: user-owned paper holdings created from approved inbox items;
+- `assets`: owner-scoped universal portfolio identity with an optional,
+  per-owner stock link to shared `tickers`;
+- `investment_accounts`: owner-scoped brokerage, exchange, wallet, bank, cash,
+  and other accounts;
+- `transaction_drafts`: mutable owner-scoped proposals retaining native
+  financial values and source evidence;
+- `transactions`: immutable confirmed ledger facts with stable chronological
+  ordering, owner-scoped fingerprints, and linked reversals;
+- `transaction_import_batches`: owner-scoped import-run metadata; and
+- `transaction_import_errors`: owner-scoped structured row errors retaining raw
+  source evidence.
 
 Important relationships:
 
@@ -253,15 +264,64 @@ auth.users
   +-> screening_runs -> screening_results -> tickers
   +-> analysis_inbox ---------------------> tickers
   +-> portfolios -> approved analysis ----> tickers
+  +-> assets -----------------------------> tickers (optional, stock only)
+  +-> investment_accounts
+  +-> transaction_import_batches
+  |     +-> transaction_drafts -> investment_accounts + assets
+  |     `-> transaction_import_errors
+  `-> transactions -> investment_accounts + assets
+          +-> confirmed source draft (optional)
+          `-> original transaction (REVERSAL only)
 ```
 
-Migrations enforce ownership foreign keys, RLS, indexes, a unique result per run/ticker, and at-most-once paper-holding creation from an approved inbox item. Supabase migrations are the authoritative source for exact schema.
+Migrations enforce ownership foreign keys, RLS, indexes, a unique result per
+run/ticker, and at-most-once paper-holding creation from an approved inbox item.
+The ledger uses composite foreign keys containing `user_id`, so a row cannot
+reference another owner's account, asset, import batch, draft, or transaction
+even through a backend connection that bypasses RLS. Supabase migrations are
+the authoritative source for exact schema.
 
 ## Portfolio Migration Contract
 
 [ADR 0001](docs/adr/0001-supabase-portfolio-migration-contract.md) is the accepted contract for the Google Sheets to Supabase migration. The current `portfolios` table remains a legacy paper-holding projection and is not the new ledger.
 
-Target data flow:
+Implemented PR 1 data boundary:
+
+```text
+Authenticated client
+  +-> own assets/accounts/drafts: SELECT, INSERT, UPDATE, DELETE
+  +-> own import batches/errors: SELECT
+  `-> own confirmed transactions: SELECT only
+
+Backend database access (Supabase service role or future SQLAlchemy session)
+  +-> mutable foundation tables: explicit owner-scoped CRUD
+  `-> confirmed transactions: SELECT and INSERT only
+```
+
+Every new table enables RLS and has an indexed `user_id`. The `anon` role has no
+table privileges. Authenticated policies use `(select auth.uid()) = user_id`;
+UPDATE policies include both `USING` and `WITH CHECK`. Direct authenticated
+confirmation is intentionally unavailable so the future atomic confirmation
+workflow must cross the reviewed backend boundary. A backend connection that
+bypasses RLS must still filter by the verified JWT owner in every SQLAlchemy or
+service-role query.
+
+Confirmed transactions use `numeric(38,18)` for quantity, price, gross amount,
+fees, and historical FX-to-THB values. This precision preserves small crypto
+units while providing ample whole-number range for stock and cash values;
+missing inputs remain null. `transaction_at` plus a generated
+`ledger_sequence` provides deterministic replay order. A nullable
+`source_fingerprint` is unique per owner only after confirmation, so repeated
+imports cannot duplicate confirmed rows while duplicate drafts can still reach
+human review and manual confirmed rows can omit a fingerprint.
+
+Confirmed UPDATE and DELETE are blocked three ways: neither operation is
+granted to authenticated or service roles, neither has an RLS policy, and a
+database trigger rejects the operation even for a privileged table owner.
+REVERSAL rows must link to one same-owner, same-account, same-asset non-reversal,
+copy its financial payload, occur no earlier than it, and cannot be duplicated.
+
+Planned data flow after PR 1:
 
 ```text
 Google Sheets export
@@ -274,11 +334,18 @@ Google Sheets export
   -> Next.js portfolio experience and AI portfolio context
 ```
 
-The target portfolio identity model is `assets`, not `tickers`. `assets` supports Stock, ETF, Crypto, Cash, Bond, Mutual fund, and Other. A US stock asset may optionally map one-to-one to an existing screener `ticker`; other asset classes remain independent.
+The portfolio identity model is `assets`, not `tickers`. `assets` supports
+Stock, ETF, Crypto, Cash, Bond, Mutual fund, and Other. A stock asset may
+optionally map once per owner to an existing screener `ticker`; different owners
+can reference the same shared ticker, while other asset classes remain
+independent.
 
 The ledger uses THB as base currency and weighted-average cost by account and asset. Confirmed transactions are append-only; a mistake produces a linked reversal/correction transaction. All quantity, price, fee, FX, cost-basis, and P&L values use PostgreSQL `numeric`. Derived positions and performance are rebuildable projections, not manually edited truth.
 
-Transactions extracted from screenshots or proposed by AI remain drafts until human confirmation. Confirmation must be atomic and idempotent. AI has no route or database policy that can confirm a transaction or place a live trade.
+Transactions extracted from screenshots or proposed by AI remain drafts until
+human confirmation. Confirmation must be atomic and idempotent. PR 1 adds no
+confirmation API, calculation engine, import implementation, or UI. AI has no
+route or database policy that can confirm a transaction or place a live trade.
 
 User ownership continues to originate from the verified JWT. New exposed tables require RLS, indexed ownership predicates, least-privilege explicit grants, and cross-user tests. User-facing views use `security_invoker = true`. Service-role access remains backend-only and every query still includes explicit owner scoping.
 

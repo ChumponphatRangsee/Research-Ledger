@@ -20,12 +20,11 @@ The near-term experience should prioritize decision quality over breadth: an aud
 
 ## Next Recommended Task
 
-**PR 1 - Portfolio Ledger Foundation**
+**PR 2 - Google Sheets Migration Staging**
 
-Add universal assets, investment accounts, transaction drafts, immutable
-confirmed transactions, import batches, import errors, ownership indexes, RLS,
-and explicit Data API grants. Preserve the legacy `portfolios` and `tickers`
-tables. Do not start PR 2 in the same branch or pull request.
+Re-export the current 15-tab Google Sheet, define staging and normalization,
+preserve original row evidence, and produce a dry-run report. Do not import the
+old 7-tab workbook as production truth or implement PR 2 in the PR 1 branch.
 
 ## Phase 1 - Foundation & Security
 
@@ -104,15 +103,15 @@ read-only archive only after reconciliation succeeds.
 
 ### PR 1 - Portfolio Ledger Foundation
 
-- [ ] Add `assets` for Stock, ETF, Crypto, Cash, Bond, Mutual fund, and Other
-- [ ] Add `investment_accounts`
-- [ ] Add owner-scoped `transaction_drafts`
-- [ ] Add immutable `transactions` with BUY, SELL, DIVIDEND, STAKING, INTEREST, TRANSFER_IN, TRANSFER_OUT, FEE, and REVERSAL
-- [ ] Add `transaction_import_batches` and `transaction_import_errors`
-- [ ] Use PostgreSQL `numeric` for quantity, price, fee, FX, cost basis, and P&L
-- [ ] Add source identifiers, raw source data, and unique source fingerprints
-- [ ] Add RLS, ownership indexes, least-privilege explicit grants, and cross-user tests
-- [ ] Preserve the legacy `portfolios` table
+- [x] Add `assets` for Stock, ETF, Crypto, Cash, Bond, Mutual fund, and Other
+- [x] Add `investment_accounts`
+- [x] Add owner-scoped `transaction_drafts`
+- [x] Add immutable `transactions` with BUY, SELL, DIVIDEND, STAKING, INTEREST, TRANSFER_IN, TRANSFER_OUT, FEE, and REVERSAL
+- [x] Add `transaction_import_batches` and `transaction_import_errors`
+- [x] Use PostgreSQL `numeric` for ledger quantity, price, fee, amount, and FX values; derived cost basis and P&L remain PR 3
+- [x] Add source identifiers, raw source data, and unique confirmed-transaction source fingerprints
+- [x] Add RLS, ownership indexes, least-privilege explicit grants, and cross-user pgTAP tests
+- [x] Preserve the legacy `portfolios` table
 
 ### PR 2 - Google Sheets Migration Staging
 
