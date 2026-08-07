@@ -190,9 +190,10 @@ or a successful provider response. Missing metrics remain JSON null.
 
 `market_data_snapshots` is shared backend cache data rather than user-owned
 application data. RLS is enabled, anon/authenticated table access is revoked,
-and only the backend service-role client manages rows. The cache records the
-provider, observation time (`data_as_of`), retrieval time (`fetched_at`), and
-freshness cutoff (`expires_at`). Service-role credentials remain backend-only.
+and only the backend service-role client manages rows through explicit grants
+and a service-role policy. The cache records the provider, observation time
+(`data_as_of`), retrieval time (`fetched_at`), and freshness cutoff
+(`expires_at`). Service-role credentials remain backend-only.
 
 Consumers depend on normalized internal models, never provider response shapes.
 
@@ -249,8 +250,10 @@ No node currently calls a configured LLM. Structured sourced research, explicit 
   per-owner stock link to shared `tickers`;
 - `investment_accounts`: owner-scoped brokerage, exchange, wallet, bank, cash,
   and other accounts;
-- `transaction_drafts`: mutable owner-scoped proposals retaining native
-  financial values and source evidence;
+- `transaction_drafts`: owner-scoped proposals retaining native financial
+  values and source evidence; drafts remain mutable only until a confirmed
+  transaction references them; spreadsheet drafts also preserve whether a fee
+  is denominated in quote currency or asset units;
 - `transactions`: immutable confirmed ledger facts with stable chronological
   ordering, owner-scoped fingerprints, and linked reversals;
 - `transaction_import_batches`: owner-scoped import-run metadata; and
@@ -278,8 +281,9 @@ Migrations enforce ownership foreign keys, RLS, indexes, a unique result per
 run/ticker, and at-most-once paper-holding creation from an approved inbox item.
 The ledger uses composite foreign keys containing `user_id`, so a row cannot
 reference another owner's account, asset, import batch, draft, or transaction
-even through a backend connection that bypasses RLS. Supabase migrations are
-the authoritative source for exact schema.
+even through a backend connection that bypasses RLS. Import errors that point to
+a draft must also match that draft's import batch. Supabase migrations are the
+authoritative source for exact schema.
 
 ## Portfolio Migration Contract
 
@@ -302,18 +306,20 @@ Every new table enables RLS and has an indexed `user_id`. The `anon` role has no
 table privileges. Authenticated policies use `(select auth.uid()) = user_id`;
 UPDATE policies include both `USING` and `WITH CHECK`. Direct authenticated
 confirmation is intentionally unavailable so the future atomic confirmation
-workflow must cross the reviewed backend boundary. A backend connection that
-bypasses RLS must still filter by the verified JWT owner in every SQLAlchemy or
-service-role query.
+workflow must cross the reviewed backend boundary. Once a draft is confirmed,
+database triggers block later draft updates so raw source evidence, amounts,
+and notes remain audit-stable. A backend connection that bypasses RLS must
+still filter by the verified JWT owner in every SQLAlchemy or service-role
+query.
 
 Confirmed transactions use `numeric(38,18)` for quantity, price, gross amount,
 fees, and historical FX-to-THB values. This precision preserves small crypto
 units while providing ample whole-number range for stock and cash values;
 missing inputs remain null. `transaction_at` plus a generated
 `ledger_sequence` provides deterministic replay order. A nullable
-`source_fingerprint` is unique per owner only after confirmation, so repeated
-imports cannot duplicate confirmed rows while duplicate drafts can still reach
-human review and manual confirmed rows can omit a fingerprint.
+`source_fingerprint` is unique per owner for imported drafts and separately for
+confirmed rows. This makes repeated spreadsheet staging race-safe while manual
+drafts without an import batch can still omit a fingerprint.
 
 Confirmed UPDATE and DELETE are blocked three ways: neither operation is
 granted to authenticated or service roles, neither has an RLS policy, and a
@@ -321,12 +327,15 @@ database trigger rejects the operation even for a privileged table owner.
 REVERSAL rows must link to one same-owner, same-account, same-asset non-reversal,
 copy its financial payload, occur no earlier than it, and cannot be duplicated.
 
-Planned data flow after PR 1:
+Implemented staging flow after PR 2:
 
 ```text
 Google Sheets export
-  -> import batch and staging validation
+  -> strict current-15-tab structure validation
+  -> deterministic normalization and source-fingerprint deduplication
+  -> asset-fee-aware position replay against Holdings reconciliation inputs
   -> transaction drafts or import errors
+  -> dry-run report
   -> human-confirmed immutable transactions
   -> deterministic ledger replay
   -> positions / cost basis / P&L / cash flows / allocation
@@ -342,10 +351,13 @@ independent.
 
 The ledger uses THB as base currency and weighted-average cost by account and asset. Confirmed transactions are append-only; a mistake produces a linked reversal/correction transaction. All quantity, price, fee, FX, cost-basis, and P&L values use PostgreSQL `numeric`. Derived positions and performance are rebuildable projections, not manually edited truth.
 
-Transactions extracted from screenshots or proposed by AI remain drafts until
-human confirmation. Confirmation must be atomic and idempotent. PR 1 adds no
-confirmation API, calculation engine, import implementation, or UI. AI has no
-route or database policy that can confirm a transaction or place a live trade.
+Transactions extracted from spreadsheets, screenshots, or AI remain drafts
+until human confirmation. The PR 2 spreadsheet importer accepts only the
+approved 15-tab shape, reads transaction input columns as facts, rejects
+formula-derived transaction prices or historical FX, and treats summary-sheet
+formulas only as reconciliation evidence. Confirmation remains a later atomic,
+idempotent workflow. AI has no route or database policy that can confirm a
+transaction or place a live trade.
 
 User ownership continues to originate from the verified JWT. New exposed tables require RLS, indexed ownership predicates, least-privilege explicit grants, and cross-user tests. User-facing views use `security_invoker = true`. Service-role access remains backend-only and every query still includes explicit owner scoping.
 

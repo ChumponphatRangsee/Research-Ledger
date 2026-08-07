@@ -41,15 +41,15 @@ Discover -> Quantitative Screen -> AI Research -> Human Review
 
 [ADR 0001](docs/adr/0001-supabase-portfolio-migration-contract.md) establishes Supabase Postgres as the target source of truth for portfolio data. The target ledger uses THB as its base currency, weighted-average cost by account and asset, and a universal asset model covering stocks, crypto, and later asset classes.
 
-Transactions follow Draft -> Human review -> Confirm. Confirmed transactions are immutable; mistakes are handled with linked reversal or correcting transactions. Every exposed user-owned database object requires both owner-scoped RLS and explicit least-privilege grants.
+Transactions follow Draft -> Human review -> Confirm. Confirmed transactions are immutable, and the source draft becomes audit-stable once referenced; mistakes are handled with linked reversal or correcting transactions. Every exposed user-owned database object requires both owner-scoped RLS and explicit least-privilege grants.
 
 Google Sheets remains writable during migration and dual-run. It becomes a read-only archive only after the contract's reconciliation, idempotency, calculation, and security gates pass. Portfolio Migration precedes Screener Expansion in the [roadmap](ROADMAP.md).
 
-PR 1 adds the database-only portfolio-ledger foundation: owner-scoped assets,
-investment accounts, mutable transaction drafts, immutable confirmed
-transactions, and import batch/error metadata. It preserves the current
-`portfolios` paper-holding implementation and adds no import process,
-calculation engine, API, or dashboard workflow.
+PR 2 adds strict staging for the current 15-tab Google Sheets workbook. The
+importer preserves entered and effective cell evidence, normalizes rows into
+owner-scoped drafts, isolates errors, deduplicates source fingerprints, and
+produces a reconciliation report. It never creates confirmed transactions.
+The current `portfolios` paper-holding implementation remains unchanged.
 
 ## Quick Start
 
@@ -119,8 +119,18 @@ disposable test database containing all migrations, run:
 supabase test db
 ```
 
-ADR 0001 remains the migration contract. The PR 1 migration implements only
-its schema and security foundation; Google Sheets staging begins in PR 2.
+ADR 0001 remains the migration contract. Run a local dry report from
+`backend/` before enabling staging persistence:
+
+```bash
+python -m app.services.portfolio_import.cli portfolio-export.xlsx \
+  --spreadsheet-id YOUR_GOOGLE_SHEET_ID
+```
+
+`--persist-staging` requires `SUPABASE_ACCESS_TOKEN`; ownership is derived from
+that verified JWT. Persistence writes only import batches, assets/accounts,
+transaction drafts, and import errors. It never promotes a draft or inserts a
+confirmed transaction.
 
 ## Project Structure
 

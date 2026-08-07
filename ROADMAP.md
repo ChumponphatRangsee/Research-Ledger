@@ -20,11 +20,12 @@ The near-term experience should prioritize decision quality over breadth: an aud
 
 ## Next Recommended Task
 
-**PR 2 - Google Sheets Migration Staging**
+**PR 3 - Deterministic Portfolio Calculation Engine**
 
-Re-export the current 15-tab Google Sheet, define staging and normalization,
-preserve original row evidence, and produce a dry-run report. Do not import the
-old 7-tab workbook as production truth or implement PR 2 in the PR 1 branch.
+Replay reviewed confirmed transactions deterministically by account and asset.
+Calculate weighted-average cost, THB cost basis, realized and unrealized P&L,
+income, cash flows, and allocation without importing spreadsheet formulas as
+ledger truth.
 
 ## Phase 1 - Foundation & Security
 
@@ -105,9 +106,9 @@ read-only archive only after reconciliation succeeds.
 
 - [x] Add `assets` for Stock, ETF, Crypto, Cash, Bond, Mutual fund, and Other
 - [x] Add `investment_accounts`
-- [x] Add owner-scoped `transaction_drafts`
+- [x] Add owner-scoped `transaction_drafts` that freeze after confirmation
 - [x] Add immutable `transactions` with BUY, SELL, DIVIDEND, STAKING, INTEREST, TRANSFER_IN, TRANSFER_OUT, FEE, and REVERSAL
-- [x] Add `transaction_import_batches` and `transaction_import_errors`
+- [x] Add `transaction_import_batches` and batch-consistent `transaction_import_errors`
 - [x] Use PostgreSQL `numeric` for ledger quantity, price, fee, amount, and FX values; derived cost basis and P&L remain PR 3
 - [x] Add source identifiers, raw source data, and unique confirmed-transaction source fingerprints
 - [x] Add RLS, ownership indexes, least-privilege explicit grants, and cross-user pgTAP tests
@@ -115,13 +116,13 @@ read-only archive only after reconciliation succeeds.
 
 ### PR 2 - Google Sheets Migration Staging
 
-- [ ] Re-export the current 15-tab Google Sheet; do not import the old 7-tab workbook as production truth
-- [ ] Stage rows with original row number and raw data preserved
-- [ ] Normalize transaction types, symbols, currencies, asset classes, and account names
-- [ ] Deduplicate by `source_fingerprint`
-- [ ] Isolate ambiguous rows in `transaction_import_errors`
-- [ ] Produce a dry-run report before promoting any transaction
-- [ ] Verify crypto fee units, stored historical FX, formula-derived prices, CRWD/MSFT history, and non-negative positions
+- [x] Re-export the current 15-tab Google Sheet; do not import the old 7-tab workbook as production truth
+- [x] Stage rows with original row number and raw data preserved
+- [x] Normalize transaction types, symbols, currencies, asset classes, and account names
+- [x] Deduplicate by `source_fingerprint`
+- [x] Isolate ambiguous rows in `transaction_import_errors`
+- [x] Produce a dry-run report before promoting any transaction
+- [x] Verify crypto fee units, stored historical FX, formula-derived prices, CRWD/MSFT history, and non-negative positions
 
 ### PR 3 - Deterministic Portfolio Calculation Engine
 
