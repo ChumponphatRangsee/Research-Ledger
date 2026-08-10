@@ -3,7 +3,7 @@ BEGIN;
 CREATE EXTENSION IF NOT EXISTS pgtap WITH SCHEMA extensions;
 SET search_path TO public, extensions;
 
-SELECT plan(28);
+SELECT plan(40);
 
 SELECT ok(
   to_regprocedure('public.prevent_confirmed_transaction_draft_update()') IS NOT NULL,
@@ -27,6 +27,102 @@ SELECT ok(
     'EXECUTE'
   ),
   'confirmed-draft immutability function is not public executable'
+);
+
+SELECT ok(
+  NOT has_function_privilege(
+    'anon',
+    'public.prevent_confirmed_transaction_draft_update()',
+    'EXECUTE'
+  ),
+  'anon cannot execute confirmed-draft immutability function'
+);
+SELECT ok(
+  NOT has_function_privilege(
+    'authenticated',
+    'public.prevent_confirmed_transaction_draft_update()',
+    'EXECUTE'
+  ),
+  'authenticated cannot execute confirmed-draft immutability function'
+);
+SELECT ok(
+  NOT has_function_privilege(
+    'service_role',
+    'public.prevent_confirmed_transaction_draft_update()',
+    'EXECUTE'
+  ),
+  'service role cannot execute confirmed-draft immutability function directly'
+);
+
+SELECT ok(
+  NOT has_function_privilege(
+    'anon',
+    'public.validate_transaction_reversal()',
+    'EXECUTE'
+  ),
+  'anon cannot execute reversal trigger function'
+);
+SELECT ok(
+  NOT has_function_privilege(
+    'authenticated',
+    'public.validate_transaction_reversal()',
+    'EXECUTE'
+  ),
+  'authenticated cannot execute reversal trigger function'
+);
+SELECT ok(
+  NOT has_function_privilege(
+    'service_role',
+    'public.validate_transaction_reversal()',
+    'EXECUTE'
+  ),
+  'service role cannot execute reversal trigger function directly'
+);
+
+SELECT ok(
+  NOT has_function_privilege(
+    'anon',
+    'public.prevent_confirmed_transaction_mutation()',
+    'EXECUTE'
+  ),
+  'anon cannot execute confirmed transaction immutability function'
+);
+SELECT ok(
+  NOT has_function_privilege(
+    'authenticated',
+    'public.prevent_confirmed_transaction_mutation()',
+    'EXECUTE'
+  ),
+  'authenticated cannot execute confirmed transaction immutability function'
+);
+SELECT ok(
+  NOT has_function_privilege(
+    'service_role',
+    'public.prevent_confirmed_transaction_mutation()',
+    'EXECUTE'
+  ),
+  'service role cannot execute confirmed transaction immutability function directly'
+);
+
+SELECT ok(
+  NOT has_function_privilege('anon', 'public.set_updated_at()', 'EXECUTE'),
+  'anon cannot execute updated-at trigger function'
+);
+SELECT ok(
+  NOT has_function_privilege(
+    'authenticated',
+    'public.set_updated_at()',
+    'EXECUTE'
+  ),
+  'authenticated cannot execute updated-at trigger function'
+);
+SELECT ok(
+  NOT has_function_privilege(
+    'service_role',
+    'public.set_updated_at()',
+    'EXECUTE'
+  ),
+  'service role cannot execute updated-at trigger function directly'
 );
 
 SELECT ok(
