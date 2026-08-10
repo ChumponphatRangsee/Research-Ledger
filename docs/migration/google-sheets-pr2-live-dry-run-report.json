@@ -1,0 +1,101 @@
+{
+  "checks": {
+    "crwd_partial_sell_history": {
+      "passed": true,
+      "sell_count": 2,
+      "transaction_count": 3
+    },
+    "crypto_fee_units": {
+      "asset_unit_fee_rows": 5,
+      "passed": true
+    },
+    "current_15_tab_export": {
+      "actual": 15,
+      "expected": 15,
+      "passed": true
+    },
+    "formula_derived_transaction_prices": {
+      "passed": true,
+      "policy": "reject formula prices; ignore summary formulas"
+    },
+    "holdings_reconciliation": {
+      "mismatch_count": 0,
+      "passed": true
+    },
+    "msft_purchase_history": {
+      "passed": true,
+      "transaction_count": 2
+    },
+    "non_negative_positions": {
+      "passed": true
+    },
+    "stored_historical_fx": {
+      "passed": true,
+      "rows_checked": 25
+    }
+  },
+  "counts": {
+    "accounts": {
+      "Best": 17,
+      "Loan Money": 6,
+      "Mom": 2
+    },
+    "asset_types": {
+      "CRYPTO": 15,
+      "STOCK": 10
+    },
+    "asset_unit_fee_rows": 5,
+    "currencies": {
+      "USD": 16,
+      "USDT": 9
+    },
+    "error_codes": {},
+    "transaction_types": {
+      "BUY": 23,
+      "SELL": 2
+    }
+  },
+  "errors": [],
+  "import_batch_id": null,
+  "positions": {
+    "Best::BTC": "0.00458541",
+    "Best::CRWD": "0",
+    "Best::ETH": "0.0311688",
+    "Best::MSFT": "1.230852",
+    "Best::NVDA": "17.6896888",
+    "Best::XRP": "1075.8430",
+    "Loan Money::BTC": "0.0019",
+    "Loan Money::DOGE": "430.2398",
+    "Loan Money::ETH": "0.0313",
+    "Loan Money::HBAR": "613.0",
+    "Loan Money::SOL": "1.06",
+    "Loan Money::XRP": "761.6666",
+    "Mom::NVDA": "6.2392632",
+    "Mom::XRP": "358.0"
+  },
+  "rows_read": 25,
+  "rows_ready_for_human_review": 25,
+  "rows_with_errors": 0,
+  "sheet_count": 15,
+  "sheet_titles": [
+    "Instructions",
+    "Dashboard",
+    "Transactions",
+    "Price Data",
+    "Holdings",
+    "Target Allocation",
+    "DCA Planner",
+    "Risk Dashboard",
+    "Thesis Tracker",
+    "Performance",
+    "Checks",
+    "Lists",
+    "AI Portfolio Diagnosis",
+    "Recommended Actions",
+    "AI Integration Config"
+  ],
+  "source_filename": "Investment Portfolio Tracker - Chumponphat.xlsx",
+  "source_fingerprint": "ca46029d6325b49bc0a0b9c9166bde3a809e00ef230fb61004e63b43433c4296",
+  "spreadsheet_id": "1MUZD_nevvmH3yx972Ep6o8pCRmsdd_IgzSzjD6TPCjw",
+  "status": "READY"
+}

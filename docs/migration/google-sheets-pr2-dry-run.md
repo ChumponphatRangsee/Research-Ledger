@@ -14,11 +14,8 @@ Drive metadata and spreadsheet metadata identify this as the current workbook:
 - `Holdings` and `Checks` are reconciliation inputs only; and
 - the separate 7-tab `Investment tracking` workbook is not an approved source.
 
-The export action completed through authenticated Google Drive on 2026-08-07.
-The connector returned a protected file reference rather than a workspace-local
-binary, so the staging CLI must still be run against the downloaded XLSX before
-any database persistence. No source workbook or private access token is stored
-in Git.
+The export was downloaded as a local XLSX on 2026-08-10 and validated with the
+staging CLI. No source workbook or private access token is stored in Git.
 
 ## Live source preflight
 
@@ -43,6 +40,34 @@ and the relevant price/formula cells produced this redacted report:
 The five positive asset-unit fees are retained at full effective precision:
 `0.0000023 BTC`, `0.00000229 BTC`, `0.0444 XRP`, `0.0000312 ETH`, and
 `0.0226 XRP`. Their displayed currency formatting is not used for parsing.
+
+## XLSX dry-run result
+
+The canonical CLI run completed successfully against the exported workbook:
+
+```bash
+python -m app.services.portfolio_import.cli \
+  "C:\Research-Ledger\data\Investment Portfolio Tracker - Chumponphat.xlsx" \
+  --spreadsheet-id 1MUZD_nevvmH3yx972Ep6o8pCRmsdd_IgzSzjD6TPCjw \
+  --output ..\docs\migration\google-sheets-pr2-live-dry-run-report.json
+```
+
+Result summary:
+
+- status: `READY`
+- rows read: 25
+- rows ready for human review: 25
+- rows with errors: 0
+- checks passed: current 15-tab export, stored historical FX, literal transaction
+  prices, crypto fee units, CRWD partial sell history, MSFT purchase history,
+  non-negative positions, and Holdings reconciliation
+- source fingerprint:
+  `ca46029d6325b49bc0a0b9c9166bde3a809e00ef230fb61004e63b43433c4296`
+
+The replay treats tiny fractional-share residue up to `0.000001` units as zero
+for reconciliation. This handles the closed CRWD position where the source
+transactions sum to a `0.0000001` unit residue while the workbook Holdings tab
+correctly records zero.
 
 ## Staging behavior
 

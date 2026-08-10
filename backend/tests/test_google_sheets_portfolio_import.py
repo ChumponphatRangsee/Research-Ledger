@@ -142,7 +142,7 @@ def _write_workbook(
             "CRWD",
             "Stock",
             "SELL",
-            0.4659705,
+            0.4659704,
             675.86,
             0.47,
             "Quote Currency",

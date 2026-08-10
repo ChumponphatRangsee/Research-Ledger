@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 from datetime import date, datetime
 from decimal import Decimal
+from itertools import zip_longest
 from pathlib import Path
 from typing import Any
 
@@ -127,15 +128,24 @@ class GoogleSheetsWorkbookReader:
             )
 
         rows: list[WorkbookTransactionRow] = []
-        for row_number in range(TRANSACTION_FIRST_ROW, formula_sheet.max_row + 1):
-            entered = [
-                formula_sheet.cell(row_number, column).value
-                for column in range(1, len(TRANSACTION_HEADERS) + 1)
-            ]
-            effective = [
-                value_sheet.cell(row_number, column).value
-                for column in range(1, len(TRANSACTION_HEADERS) + 1)
-            ]
+        formula_rows = formula_sheet.iter_rows(
+            min_row=TRANSACTION_FIRST_ROW,
+            max_col=len(TRANSACTION_HEADERS),
+            values_only=True,
+        )
+        value_rows = value_sheet.iter_rows(
+            min_row=TRANSACTION_FIRST_ROW,
+            max_col=len(TRANSACTION_HEADERS),
+            values_only=True,
+        )
+        for row_number, (entered_row, effective_row) in enumerate(
+            zip_longest(formula_rows, value_rows, fillvalue=()),
+            start=TRANSACTION_FIRST_ROW,
+        ):
+            entered = list(entered_row or ())[: len(TRANSACTION_HEADERS)]
+            effective = list(effective_row or ())[: len(TRANSACTION_HEADERS)]
+            entered.extend([None] * (len(TRANSACTION_HEADERS) - len(entered)))
+            effective.extend([None] * (len(TRANSACTION_HEADERS) - len(effective)))
             if not any(value is not None for value in effective[:12]):
                 continue
 
@@ -179,10 +189,12 @@ class GoogleSheetsWorkbookReader:
             )
 
         holdings: dict[tuple[str, str], Decimal] = {}
-        for row_number in range(5, sheet.max_row + 1):
-            account = sheet.cell(row_number, 1).value
-            symbol = sheet.cell(row_number, 2).value
-            quantity = sheet.cell(row_number, 4).value
+        for row in sheet.iter_rows(min_row=5, max_col=4, values_only=True):
+            values = list(row or ())[:4]
+            values.extend([None] * (4 - len(values)))
+            account = values[0]
+            symbol = values[1]
+            quantity = values[3]
             if account in (None, "") or symbol in (None, ""):
                 continue
             holdings[(str(account).strip(), str(symbol).strip().upper())] = Decimal(
