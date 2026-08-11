@@ -1,3 +1,4 @@
+from typing import Literal
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -5,6 +6,11 @@ from pydantic import BaseModel, ConfigDict
 
 from app.api.auth import AuthenticatedUser, require_user
 from app.db.supabase import get_supabase_client
+from app.services.portfolio_ledger import SupabasePortfolioLedgerRepository
+from app.services.portfolio_workflow import (
+    SupabaseTransactionWorkflowRepository,
+    TransactionDraftNotFound,
+)
 
 router = APIRouter()
 
@@ -29,6 +35,46 @@ async def list_portfolios(current_user: AuthenticatedUser = Depends(require_user
         .execute()
     )
     return {"holdings": result.data, "count": len(result.data)}
+
+
+@router.get("/ledger/summary")
+async def portfolio_ledger_summary(
+    current_user: AuthenticatedUser = Depends(require_user),
+):
+    repository = SupabasePortfolioLedgerRepository()
+    snapshot = repository.build_snapshot(user_id=current_user.id)
+    return snapshot.to_report()
+
+
+@router.get("/transaction-drafts")
+async def list_transaction_drafts(
+    status: Literal["pending", "confirmed", "all"] = "pending",
+    import_batch_id: UUID | None = None,
+    current_user: AuthenticatedUser = Depends(require_user),
+):
+    repository = SupabaseTransactionWorkflowRepository()
+    drafts = repository.list_drafts(
+        user_id=current_user.id,
+        status=status,
+        import_batch_id=import_batch_id,
+    )
+    return {"drafts": drafts, "count": len(drafts)}
+
+
+@router.post("/transaction-drafts/{draft_id}/confirm")
+async def confirm_transaction_draft(
+    draft_id: UUID,
+    current_user: AuthenticatedUser = Depends(require_user),
+):
+    repository = SupabaseTransactionWorkflowRepository()
+    try:
+        transaction = repository.confirm_draft(
+            user_id=current_user.id,
+            draft_id=draft_id,
+        )
+    except TransactionDraftNotFound as exc:
+        raise HTTPException(status_code=404, detail="Transaction draft not found") from exc
+    return {"status": "confirmed", "transaction": transaction}
 
 
 @router.post("/execute/{inbox_id}")

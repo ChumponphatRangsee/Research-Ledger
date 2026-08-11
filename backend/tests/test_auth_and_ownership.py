@@ -414,6 +414,100 @@ def test_portfolio_list_filters_to_current_user(monkeypatch):
     app.dependency_overrides.clear()
 
 
+def test_portfolio_ledger_summary_uses_current_user(monkeypatch):
+    calls = []
+
+    class FakeSnapshot:
+        @staticmethod
+        def to_report():
+            return {"positions": [], "total_cost_basis_thb": "0"}
+
+    class FakeLedgerRepository:
+        def build_snapshot(self, *, user_id):
+            calls.append(user_id)
+            return FakeSnapshot()
+
+    monkeypatch.setattr(
+        portfolio,
+        "SupabasePortfolioLedgerRepository",
+        lambda: FakeLedgerRepository(),
+    )
+    client, app = make_client(USER_A)
+
+    response = client.get(f"/api/portfolio/ledger/summary?user_id={USER_B}")
+
+    assert response.status_code == 200
+    assert response.json()["positions"] == []
+    assert calls == [USER_A]
+    app.dependency_overrides.clear()
+
+
+def test_transaction_draft_list_uses_current_user(monkeypatch):
+    calls = []
+
+    class FakeWorkflowRepository:
+        def list_drafts(self, *, user_id, status, import_batch_id):
+            calls.append((user_id, status, import_batch_id))
+            return [{"id": str(INBOX_ID), "status": "pending"}]
+
+    monkeypatch.setattr(
+        portfolio,
+        "SupabaseTransactionWorkflowRepository",
+        lambda: FakeWorkflowRepository(),
+    )
+    client, app = make_client(USER_A)
+
+    response = client.get(f"/api/portfolio/transaction-drafts?user_id={USER_B}")
+
+    assert response.status_code == 200
+    assert response.json()["count"] == 1
+    assert calls == [(USER_A, "pending", None)]
+    app.dependency_overrides.clear()
+
+
+def test_transaction_draft_confirm_uses_current_user(monkeypatch):
+    calls = []
+
+    class FakeWorkflowRepository:
+        def confirm_draft(self, *, user_id, draft_id):
+            calls.append((user_id, draft_id))
+            return {"id": "transaction-id"}
+
+    monkeypatch.setattr(
+        portfolio,
+        "SupabaseTransactionWorkflowRepository",
+        lambda: FakeWorkflowRepository(),
+    )
+    client, app = make_client(USER_A)
+
+    response = client.post(
+        f"/api/portfolio/transaction-drafts/{INBOX_ID}/confirm?user_id={USER_B}"
+    )
+
+    assert response.status_code == 200
+    assert response.json()["transaction"]["id"] == "transaction-id"
+    assert calls == [(USER_A, INBOX_ID)]
+    app.dependency_overrides.clear()
+
+
+def test_transaction_draft_confirm_hides_other_users_drafts(monkeypatch):
+    class FakeWorkflowRepository:
+        def confirm_draft(self, *, user_id, draft_id):
+            raise portfolio.TransactionDraftNotFound
+
+    monkeypatch.setattr(
+        portfolio,
+        "SupabaseTransactionWorkflowRepository",
+        lambda: FakeWorkflowRepository(),
+    )
+    client, app = make_client(USER_A)
+
+    response = client.post(f"/api/portfolio/transaction-drafts/{INBOX_ID}/confirm")
+
+    assert response.status_code == 404
+    app.dependency_overrides.clear()
+
+
 def test_screener_task_passes_authenticated_user_to_pipeline(monkeypatch):
     delayed_pipeline_calls = []
     triggered_count_calls = []

@@ -39,6 +39,9 @@ npm-debug.log*
 htmlcov/
 .pytest_cache/
 
+# Local private data exports
+data/
+
 # Docker
 docker-compose.override.yml
 

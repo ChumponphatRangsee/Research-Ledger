@@ -23,7 +23,7 @@ from app.services.portfolio_import.models import (
 )
 
 WORKBOOK_TIME_ZONE = ZoneInfo("Asia/Bangkok")
-POSITION_TOLERANCE = Decimal("0.00000001")
+POSITION_TOLERANCE = Decimal("0.000001")
 
 TRANSACTION_TYPE_ALIASES = {
     "BUY": "BUY",
