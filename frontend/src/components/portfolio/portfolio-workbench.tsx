@@ -1,7 +1,8 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
-import { AlertTriangle, CheckCircle2, Loader2, RefreshCw } from "lucide-react";
+import { AlertTriangle, CheckCircle2, Loader2, RefreshCw, UserCircle2 } from "lucide-react";
+import Link from "next/link";
 
 import { PortfolioList } from "@/components/portfolio/portfolio-list";
 import { Badge } from "@/components/ui/badge";
@@ -42,9 +43,14 @@ const tabs: Array<{ id: PortfolioTab; label: string; description: string }> = [
   },
 ];
 
+const AUTH_REQUIRED_MESSAGE = "Please sign in to view portfolio ledger data.";
+
 function apiErrorMessage(error: unknown) {
   if (error instanceof ApiError && (error.status === 401 || error.status === 403)) {
-    return "Please sign in again to view portfolio ledger data.";
+    return AUTH_REQUIRED_MESSAGE;
+  }
+  if (error instanceof Error && error.message === "Not authenticated") {
+    return AUTH_REQUIRED_MESSAGE;
   }
   if (error instanceof Error) return error.message;
   return "Could not load portfolio ledger data.";
@@ -236,7 +242,17 @@ export function PortfolioWorkbench() {
 
       {error && (
         <Card className="border-destructive/30">
-          <CardContent className="p-4 text-sm text-destructive">{error}</CardContent>
+          <CardContent className="flex flex-col gap-3 p-4 text-sm text-destructive sm:flex-row sm:items-center sm:justify-between">
+            <span>{error}</span>
+            {error === AUTH_REQUIRED_MESSAGE && (
+              <Button variant="outline" size="sm" asChild>
+                <Link href="/login?redirectTo=%2Fportfolio">
+                  <UserCircle2 className="h-4 w-4" />
+                  Sign in
+                </Link>
+              </Button>
+            )}
+          </CardContent>
         </Card>
       )}
 
