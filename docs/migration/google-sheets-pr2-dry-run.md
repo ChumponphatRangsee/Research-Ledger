@@ -69,6 +69,29 @@ for reconciliation. This handles the closed CRWD position where the source
 transactions sum to a `0.0000001` unit residue while the workbook Holdings tab
 correctly records zero.
 
+## Supabase staging result
+
+The approved XLSX export was staged to Supabase Cloud on 2026-08-11 using the
+development-only owner bypass. The bypass used the backend service role only to
+resolve the existing Supabase Auth user by email; row ownership was still stored
+as the resolved `auth.users.id`.
+
+```bash
+python -m app.services.portfolio_import.cli \
+  "C:\Research-Ledger\data\Investment Portfolio Tracker - Chumponphat.xlsx" \
+  --spreadsheet-id 1MUZD_nevvmH3yx972Ep6o8pCRmsdd_IgzSzjD6TPCjw \
+  --persist-staging \
+  --output ..\docs\migration\google-sheets-pr2-live-staging-report.json
+```
+
+Remote verification:
+
+- import batch: `9588e840-4d46-4661-ae1c-f91f36e626be`
+- `transaction_import_batches`: 1 row for the batch
+- `transaction_drafts`: 25 rows for the batch
+- `transaction_import_errors`: 0 rows for the batch
+- confirmed `transactions` from the batch drafts: 0 rows
+
 ## Staging behavior
 
 The importer:
@@ -99,3 +122,14 @@ python -m app.services.portfolio_import.cli <current-15-tab-export.xlsx> \
 Only after reviewing that report should an authenticated operator set
 `SUPABASE_ACCESS_TOKEN` and add `--persist-staging`. The token is verified and
 its `sub` claim supplies row ownership; the command accepts no `user_id`.
+
+For local development only, the CLI also supports:
+
+```bash
+ALLOW_DEV_OWNER_BYPASS=true
+DEV_IMPORT_USER_EMAIL=<existing Supabase Auth user email>
+```
+
+This bypass does not disable ownership. It uses the backend service role to
+resolve an existing Supabase Auth user and then stages rows under that user's
+`auth.users.id`.

@@ -8,6 +8,7 @@ from uuid import UUID
 import pytest
 from openpyxl import Workbook, load_workbook
 
+from app.services.portfolio_import import cli as import_cli
 from app.services.portfolio_import import (
     REQUIRED_SHEET_TITLES,
     FeeUnit,
@@ -367,6 +368,67 @@ class RecordingClient:
 
     def table(self, table: str):
         return RecordingQuery(self, table)
+
+
+class RecordingAuthAdmin:
+    def __init__(self, pages: dict[int, list[object]]):
+        self.pages = pages
+        self.calls: list[tuple[int, int]] = []
+
+    def list_users(self, *, page: int, per_page: int):
+        self.calls.append((page, per_page))
+        return self.pages.get(page, [])
+
+
+class RecordingAuthClient:
+    def __init__(self, pages: dict[int, list[object]]):
+        self.auth = SimpleNamespace(admin=RecordingAuthAdmin(pages))
+
+
+def test_cli_requires_explicit_dev_owner_bypass(monkeypatch):
+    monkeypatch.delenv("SUPABASE_ACCESS_TOKEN", raising=False)
+    monkeypatch.delenv("ALLOW_DEV_OWNER_BYPASS", raising=False)
+    monkeypatch.delenv("DEV_IMPORT_USER_EMAIL", raising=False)
+
+    with pytest.raises(SystemExit, match="SUPABASE_ACCESS_TOKEN is required"):
+        import_cli._resolve_staging_user_id()
+
+
+def test_cli_keeps_verified_jwt_as_primary_owner_source(monkeypatch):
+    monkeypatch.setenv("SUPABASE_ACCESS_TOKEN", "jwt-token")
+    monkeypatch.setenv("ALLOW_DEV_OWNER_BYPASS", "true")
+    monkeypatch.setenv("DEV_IMPORT_USER_EMAIL", "dev@example.com")
+    monkeypatch.setattr(
+        import_cli,
+        "verify_supabase_jwt",
+        lambda token: SimpleNamespace(id=USER_ID),
+    )
+
+    def fail_lookup(_: str):
+        raise AssertionError("dev owner bypass should not run when JWT is present")
+
+    monkeypatch.setattr(import_cli, "_lookup_dev_owner_user_id", fail_lookup)
+
+    assert import_cli._resolve_staging_user_id() == USER_ID
+
+
+def test_cli_dev_owner_bypass_resolves_existing_auth_user(monkeypatch):
+    owner_id = UUID("22222222-2222-4222-8222-222222222222")
+    client = RecordingAuthClient(
+        {
+            1: [
+                SimpleNamespace(id=str(USER_ID), email="other@example.com"),
+                {"id": str(owner_id), "email": "Owner@Example.com"},
+            ],
+        }
+    )
+    monkeypatch.setenv("ALLOW_DEV_OWNER_BYPASS", "true")
+    monkeypatch.setenv("DEV_IMPORT_USER_EMAIL", "owner@example.com")
+    monkeypatch.delenv("SUPABASE_ACCESS_TOKEN", raising=False)
+    monkeypatch.setattr(import_cli, "get_supabase_client", lambda: client)
+
+    assert import_cli._resolve_staging_user_id() == owner_id
+    assert client.auth.admin.calls == [(1, 1000)]
 
 
 def test_repository_scopes_dedup_reads_to_verified_owner():
