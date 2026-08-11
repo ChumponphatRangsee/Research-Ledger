@@ -92,6 +92,30 @@ Remote verification:
 - `transaction_import_errors`: 0 rows for the batch
 - confirmed `transactions` from the batch drafts: 0 rows
 
+## Confirmed ledger promotion result
+
+After the PR 4 confirmation workflow was deployed, the staged batch was
+explicitly approved and confirmed on 2026-08-11. Confirmation used the
+backend-only `confirm_transaction_draft` RPC, which returns the same confirmed
+transaction if called repeatedly for the same draft.
+
+Remote verification after confirmation:
+
+- pending drafts for batch `9588e840-4d46-4661-ae1c-f91f36e626be`: 0
+- confirmed drafts for the batch: 25
+- confirmed transactions linked to the batch drafts: 25
+- total confirmed transactions for the owner: 25
+- idempotency spot check: repeating confirmation for an already confirmed draft
+  returned the same transaction and kept one transaction for that draft
+
+Deterministic ledger replay after confirmation:
+
+- positions: 14 account/asset positions
+- total THB cost basis: `309749.48879218389783534`
+- total realized P&L: `6198.063816362974`
+- total income: `0`
+- CRWD replay quantity: `0` after tiny fractional residue normalization
+
 ## Staging behavior
 
 The importer:

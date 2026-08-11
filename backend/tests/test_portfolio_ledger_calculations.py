@@ -87,6 +87,44 @@ def test_asset_unit_buy_fee_reduces_acquired_quantity_without_cash_fee():
     assert position.fees_thb == Decimal("0")
 
 
+def test_buy_cost_basis_uses_quantity_times_unit_price_when_gross_amount_missing():
+    position = only_position(
+        [
+            TransactionRecord(
+                id="buy-1",
+                investment_account_id=ACCOUNT_ID,
+                asset_id=ASSET_ID,
+                transaction_type="BUY",
+                transaction_at=datetime(2026, 1, 1, tzinfo=UTC),
+                ledger_sequence=1,
+                quantity=Decimal("2"),
+                unit_price=Decimal("10"),
+                gross_amount=None,
+                fee_amount=Decimal("1"),
+                fee_unit="QUOTE_CURRENCY",
+                currency="USD",
+                fx_rate_to_thb=Decimal("35"),
+            )
+        ]
+    )
+
+    assert position.quantity == Decimal("2")
+    assert position.cost_basis_thb == Decimal("735")
+    assert position.cash_flow_thb == Decimal("-735")
+
+
+def test_tiny_fractional_residue_is_normalized_to_zero():
+    position = only_position(
+        [
+            tx("buy-1", "BUY", 1, quantity="1.0000001", gross_amount="10"),
+            tx("sell-1", "SELL", 2, quantity="1", gross_amount="10"),
+        ]
+    )
+
+    assert position.quantity == Decimal("0")
+    assert position.cost_basis_thb == Decimal("0")
+
+
 def test_reversal_inverts_original_transaction_effect():
     position = only_position(
         [

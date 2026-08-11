@@ -14,6 +14,7 @@ from typing import Any
 
 
 ZERO = Decimal("0")
+POSITION_ZERO_TOLERANCE = Decimal("0.000001")
 
 
 class LedgerReplayError(ValueError):
@@ -131,6 +132,8 @@ class PortfolioPosition:
         self.income_thb += effect.income_delta_thb
         self.fees_thb += effect.fee_delta_thb
         self.cash_flow_thb += effect.cash_flow_delta_thb
+        if abs(self.quantity) <= POSITION_ZERO_TOLERANCE:
+            self.quantity = ZERO
         if self.quantity < ZERO:
             raise LedgerReplayError(
                 f"Transaction {transaction_id} creates a negative position"
@@ -253,7 +256,7 @@ def _transaction_effect(
             ) from exc
 
     quantity = record.quantity or ZERO
-    gross_thb = _money_thb(record.gross_amount, record.fx_rate_to_thb)
+    gross_thb = _gross_amount_thb(record)
     quote_fee_thb = (
         _money_thb(record.fee_amount, record.fx_rate_to_thb)
         if record.fee_unit == "QUOTE_CURRENCY"
@@ -360,6 +363,14 @@ def _money_thb(amount: Decimal | None, fx_rate_to_thb: Decimal | None) -> Decima
     if amount is None:
         return ZERO
     return amount * (fx_rate_to_thb or Decimal("1"))
+
+
+def _gross_amount_thb(record: TransactionRecord) -> Decimal:
+    if record.gross_amount is not None:
+        return _money_thb(record.gross_amount, record.fx_rate_to_thb)
+    if record.quantity is not None and record.unit_price is not None:
+        return _money_thb(record.quantity * record.unit_price, record.fx_rate_to_thb)
+    return ZERO
 
 
 def _decimal_or_none(value: Any) -> Decimal | None:
