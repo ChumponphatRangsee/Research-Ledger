@@ -121,6 +121,110 @@ export async function createPaperHoldingFromInbox(
   return parseResponse(res, "Failed to create paper holding");
 }
 
+export type LedgerPosition = {
+  investment_account_id: string;
+  investment_account_name: string | null;
+  asset_id: string;
+  asset_symbol: string | null;
+  asset_type: string | null;
+  asset_currency: string | null;
+  quantity: string;
+  cost_basis_thb: string;
+  weighted_average_cost_thb: string | null;
+  realized_pnl_thb: string;
+  income_thb: string;
+  fees_thb: string;
+  cash_flow_thb: string;
+  market_value_thb: string | null;
+  unrealized_pnl_thb: string | null;
+  allocation_pct: string | null;
+};
+
+export type LedgerSummary = {
+  total_cost_basis_thb: string;
+  total_realized_pnl_thb: string;
+  total_income_thb: string;
+  total_market_value_thb: string | null;
+  positions: LedgerPosition[];
+};
+
+export async function fetchLedgerSummary(): Promise<LedgerSummary> {
+  const res = await fetch(`${API_URL}/api/portfolio/ledger/summary`, {
+    headers: await authHeaders(),
+    cache: "no-store",
+  });
+  return parseResponse<LedgerSummary>(res, "Failed to fetch ledger summary");
+}
+
+export type TransactionDraftStatus = "pending" | "confirmed" | "all";
+
+export type TransactionDraft = {
+  id: string;
+  user_id: string;
+  investment_account_id: string;
+  asset_id: string;
+  import_batch_id: string | null;
+  reversal_of_transaction_id: string | null;
+  transaction_type: string;
+  transaction_at: string;
+  quantity: string | number | null;
+  unit_price: string | number | null;
+  gross_amount: string | number | null;
+  fee_amount: string | number | null;
+  fee_unit: string | null;
+  currency: string;
+  fx_rate_to_thb: string | number | null;
+  source_type: string;
+  source_identifier: string | null;
+  source_row_number: number | null;
+  source_fingerprint: string | null;
+  raw_source_data: Record<string, unknown>;
+  source_metadata: Record<string, unknown>;
+  notes: string | null;
+  created_at: string;
+  updated_at: string;
+  status: "pending" | "confirmed";
+  confirmed_transaction_id: string | null;
+  investment_accounts: {
+    name: string | null;
+    account_type: string | null;
+  } | null;
+  assets: {
+    symbol: string | null;
+    name: string | null;
+    asset_type: string | null;
+    currency: string | null;
+  } | null;
+};
+
+export async function fetchTransactionDrafts(
+  status: TransactionDraftStatus = "pending",
+  importBatchId?: string | null
+): Promise<TransactionDraft[]> {
+  const params = new URLSearchParams({ status });
+  if (importBatchId) params.set("import_batch_id", importBatchId);
+  const res = await fetch(`${API_URL}/api/portfolio/transaction-drafts?${params}`, {
+    headers: await authHeaders(),
+    cache: "no-store",
+  });
+  const data = await parseResponse<{ drafts: TransactionDraft[] }>(
+    res,
+    "Failed to fetch transaction drafts"
+  );
+  return data.drafts;
+}
+
+export async function confirmTransactionDraft(id: string) {
+  const res = await fetch(`${API_URL}/api/portfolio/transaction-drafts/${id}/confirm`, {
+    method: "POST",
+    headers: await authHeaders(),
+  });
+  return parseResponse<{ status: string; transaction: Record<string, unknown> }>(
+    res,
+    "Failed to confirm transaction draft"
+  );
+}
+
 export async function runScreener() {
   const res = await fetch(`${API_URL}/api/screener/run`, {
     method: "POST",
