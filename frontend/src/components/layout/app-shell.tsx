@@ -12,6 +12,7 @@ import {
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
+import { AuthStatus } from "@/components/auth/auth-status";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 
@@ -103,10 +104,13 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             </div>
           </div>
 
-          <Badge variant="outline" className="gap-1.5 font-normal text-muted-foreground">
-            <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
-            Paper research
-          </Badge>
+          <div className="flex items-center gap-3">
+            <Badge variant="outline" className="hidden gap-1.5 font-normal text-muted-foreground sm:flex">
+              <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
+              Paper research
+            </Badge>
+            <AuthStatus />
+          </div>
         </header>
 
         <main className="mx-auto w-full max-w-[1600px] px-4 py-6 sm:px-6 lg:px-8 lg:py-8">
