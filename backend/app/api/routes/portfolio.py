@@ -5,6 +5,7 @@ from pydantic import BaseModel, ConfigDict
 
 from app.api.auth import AuthenticatedUser, require_user
 from app.db.supabase import get_supabase_client
+from app.services.portfolio_ledger import SupabasePortfolioLedgerRepository
 
 router = APIRouter()
 
@@ -29,6 +30,15 @@ async def list_portfolios(current_user: AuthenticatedUser = Depends(require_user
         .execute()
     )
     return {"holdings": result.data, "count": len(result.data)}
+
+
+@router.get("/ledger/summary")
+async def portfolio_ledger_summary(
+    current_user: AuthenticatedUser = Depends(require_user),
+):
+    repository = SupabasePortfolioLedgerRepository()
+    snapshot = repository.build_snapshot(user_id=current_user.id)
+    return snapshot.to_report()
 
 
 @router.post("/execute/{inbox_id}")

@@ -414,6 +414,34 @@ def test_portfolio_list_filters_to_current_user(monkeypatch):
     app.dependency_overrides.clear()
 
 
+def test_portfolio_ledger_summary_uses_current_user(monkeypatch):
+    calls = []
+
+    class FakeSnapshot:
+        @staticmethod
+        def to_report():
+            return {"positions": [], "total_cost_basis_thb": "0"}
+
+    class FakeLedgerRepository:
+        def build_snapshot(self, *, user_id):
+            calls.append(user_id)
+            return FakeSnapshot()
+
+    monkeypatch.setattr(
+        portfolio,
+        "SupabasePortfolioLedgerRepository",
+        lambda: FakeLedgerRepository(),
+    )
+    client, app = make_client(USER_A)
+
+    response = client.get(f"/api/portfolio/ledger/summary?user_id={USER_B}")
+
+    assert response.status_code == 200
+    assert response.json()["positions"] == []
+    assert calls == [USER_A]
+    app.dependency_overrides.clear()
+
+
 def test_screener_task_passes_authenticated_user_to_pipeline(monkeypatch):
     delayed_pipeline_calls = []
     triggered_count_calls = []
