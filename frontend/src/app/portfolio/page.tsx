@@ -1,15 +1,15 @@
 import { PageHeader } from "@/components/layout/page-header";
-import { PortfolioList } from "@/components/portfolio/portfolio-list";
+import { PortfolioWorkbench } from "@/components/portfolio/portfolio-workbench";
 
 export default function PortfolioPage() {
   return (
     <div className="space-y-6">
       <PageHeader
-        eyebrow="Paper portfolio"
+        eyebrow="Portfolio ledger"
         title="Portfolio"
-        description="Monitor active paper holdings created from reviewed and approved investment analyses."
+        description="Review transaction drafts, inspect confirmed ledger positions, and keep legacy paper holdings visible during migration."
       />
-      <PortfolioList />
+      <PortfolioWorkbench />
     </div>
   );
 }

@@ -29,6 +29,24 @@ export class ApiError extends Error {
   }
 }
 
+export class ApiNetworkError extends Error {
+  constructor(message: string, readonly cause?: unknown) {
+    super(message);
+  }
+}
+
+async function apiFetch(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
+  try {
+    return await fetch(input, init);
+  } catch (error) {
+    const target = typeof input === "string" ? input : input.toString();
+    throw new ApiNetworkError(
+      `Could not reach backend API at ${target}. Check that the FastAPI server is running and that BACKEND_CORS_ORIGINS includes this frontend origin.`,
+      error
+    );
+  }
+}
+
 async function authHeaders(includeJson = false): Promise<HeadersInit> {
   const supabase = createClient();
   const { data, error } = await supabase.auth.getSession();
@@ -59,7 +77,7 @@ async function parseResponse<T>(res: Response, fallbackMessage: string): Promise
 }
 
 export async function fetchInbox(status = "pending_review"): Promise<InboxItem[]> {
-  const res = await fetch(`${API_URL}/api/analysis/inbox?status=${status}`, {
+  const res = await apiFetch(`${API_URL}/api/analysis/inbox?status=${status}`, {
     headers: await authHeaders(),
     cache: "no-store",
   });
@@ -68,7 +86,7 @@ export async function fetchInbox(status = "pending_review"): Promise<InboxItem[]
 }
 
 export async function approveInboxItem(id: string) {
-  const res = await fetch(`${API_URL}/api/analysis/inbox/${id}/approve`, {
+  const res = await apiFetch(`${API_URL}/api/analysis/inbox/${id}/approve`, {
     method: "POST",
     headers: await authHeaders(),
   });
@@ -76,7 +94,7 @@ export async function approveInboxItem(id: string) {
 }
 
 export async function discardInboxItem(id: string) {
-  const res = await fetch(`${API_URL}/api/analysis/inbox/${id}/discard`, {
+  const res = await apiFetch(`${API_URL}/api/analysis/inbox/${id}/discard`, {
     method: "POST",
     headers: await authHeaders(),
   });
@@ -101,7 +119,7 @@ export type PortfolioHolding = {
 };
 
 export async function fetchPortfolio(): Promise<PortfolioHolding[]> {
-  const res = await fetch(`${API_URL}/api/portfolio/`, {
+  const res = await apiFetch(`${API_URL}/api/portfolio/`, {
     headers: await authHeaders(),
     cache: "no-store",
   });
@@ -113,7 +131,7 @@ export async function createPaperHoldingFromInbox(
   id: string,
   body: { shares: number; cost_basis?: number | null; notes?: string | null }
 ) {
-  const res = await fetch(`${API_URL}/api/portfolio/execute/${id}`, {
+  const res = await apiFetch(`${API_URL}/api/portfolio/execute/${id}`, {
     method: "POST",
     headers: await authHeaders(true),
     body: JSON.stringify(body),
@@ -121,8 +139,112 @@ export async function createPaperHoldingFromInbox(
   return parseResponse(res, "Failed to create paper holding");
 }
 
+export type LedgerPosition = {
+  investment_account_id: string;
+  investment_account_name: string | null;
+  asset_id: string;
+  asset_symbol: string | null;
+  asset_type: string | null;
+  asset_currency: string | null;
+  quantity: string;
+  cost_basis_thb: string;
+  weighted_average_cost_thb: string | null;
+  realized_pnl_thb: string;
+  income_thb: string;
+  fees_thb: string;
+  cash_flow_thb: string;
+  market_value_thb: string | null;
+  unrealized_pnl_thb: string | null;
+  allocation_pct: string | null;
+};
+
+export type LedgerSummary = {
+  total_cost_basis_thb: string;
+  total_realized_pnl_thb: string;
+  total_income_thb: string;
+  total_market_value_thb: string | null;
+  positions: LedgerPosition[];
+};
+
+export async function fetchLedgerSummary(): Promise<LedgerSummary> {
+  const res = await apiFetch(`${API_URL}/api/portfolio/ledger/summary`, {
+    headers: await authHeaders(),
+    cache: "no-store",
+  });
+  return parseResponse<LedgerSummary>(res, "Failed to fetch ledger summary");
+}
+
+export type TransactionDraftStatus = "pending" | "confirmed" | "all";
+
+export type TransactionDraft = {
+  id: string;
+  user_id: string;
+  investment_account_id: string;
+  asset_id: string;
+  import_batch_id: string | null;
+  reversal_of_transaction_id: string | null;
+  transaction_type: string;
+  transaction_at: string;
+  quantity: string | number | null;
+  unit_price: string | number | null;
+  gross_amount: string | number | null;
+  fee_amount: string | number | null;
+  fee_unit: string | null;
+  currency: string;
+  fx_rate_to_thb: string | number | null;
+  source_type: string;
+  source_identifier: string | null;
+  source_row_number: number | null;
+  source_fingerprint: string | null;
+  raw_source_data: Record<string, unknown>;
+  source_metadata: Record<string, unknown>;
+  notes: string | null;
+  created_at: string;
+  updated_at: string;
+  status: "pending" | "confirmed";
+  confirmed_transaction_id: string | null;
+  investment_accounts: {
+    name: string | null;
+    account_type: string | null;
+  } | null;
+  assets: {
+    symbol: string | null;
+    name: string | null;
+    asset_type: string | null;
+    currency: string | null;
+  } | null;
+};
+
+export async function fetchTransactionDrafts(
+  status: TransactionDraftStatus = "pending",
+  importBatchId?: string | null
+): Promise<TransactionDraft[]> {
+  const params = new URLSearchParams({ status });
+  if (importBatchId) params.set("import_batch_id", importBatchId);
+  const res = await apiFetch(`${API_URL}/api/portfolio/transaction-drafts?${params}`, {
+    headers: await authHeaders(),
+    cache: "no-store",
+  });
+  const data = await parseResponse<{ drafts: TransactionDraft[] }>(
+    res,
+    "Failed to fetch transaction drafts"
+  );
+  return data.drafts;
+}
+
+export async function confirmTransactionDraft(id: string) {
+  const res = await apiFetch(`${API_URL}/api/portfolio/transaction-drafts/${id}/confirm`, {
+    method: "POST",
+    headers: await authHeaders(),
+  });
+  return parseResponse<{ status: string; transaction: Record<string, unknown> }>(
+    res,
+    "Failed to confirm transaction draft"
+  );
+}
+
 export async function runScreener() {
-  const res = await fetch(`${API_URL}/api/screener/run`, {
+  const res = await apiFetch(`${API_URL}/api/screener/run`, {
     method: "POST",
     headers: await authHeaders(),
   });
@@ -130,7 +252,7 @@ export async function runScreener() {
 }
 
 export async function runSectorScreener(topNCandidates = 20) {
-  const res = await fetch(`${API_URL}/api/screener/run`, {
+  const res = await apiFetch(`${API_URL}/api/screener/run`, {
     method: "POST",
     headers: await authHeaders(true),
     body: JSON.stringify({ top_n_candidates: topNCandidates }),
@@ -139,7 +261,7 @@ export async function runSectorScreener(topNCandidates = 20) {
 }
 
 export async function triggerPipeline(body: { ticker_symbol: string; screening_run_id?: string | null }) {
-  const res = await fetch(`${API_URL}/api/screener/pipeline`, {
+  const res = await apiFetch(`${API_URL}/api/screener/pipeline`, {
     method: "POST",
     headers: await authHeaders(true),
     body: JSON.stringify(body),
@@ -193,7 +315,7 @@ export type ScreeningResult = {
 };
 
 export async function fetchLatestScreeningRun(): Promise<ScreeningRun | null> {
-  const res = await fetch(`${API_URL}/api/screener/runs/latest`, {
+  const res = await apiFetch(`${API_URL}/api/screener/runs/latest`, {
     headers: await authHeaders(),
     cache: "no-store",
   });
@@ -202,7 +324,7 @@ export async function fetchLatestScreeningRun(): Promise<ScreeningRun | null> {
 }
 
 export async function fetchScreeningResults(runId: string): Promise<ScreeningResult[]> {
-  const res = await fetch(
+  const res = await apiFetch(
     `${API_URL}/api/screener/runs/${runId}/results?limit=500&sort=total_score_desc`,
     { headers: await authHeaders(), cache: "no-store" }
   );
