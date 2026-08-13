@@ -117,6 +117,19 @@ def test_missing_bearer_token_is_unauthorized():
     assert response.status_code == 401
 
 
+def test_generic_debug_environment_does_not_break_settings(monkeypatch):
+    from app.config import get_settings
+
+    monkeypatch.setenv("DEBUG", "release")
+    monkeypatch.delenv("APP_DEBUG", raising=False)
+    get_settings.cache_clear()
+
+    try:
+        assert get_settings().debug is False
+    finally:
+        get_settings.cache_clear()
+
+
 def test_invalid_bearer_token_is_unauthorized():
     client = TestClient(create_app())
 
