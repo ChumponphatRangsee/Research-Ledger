@@ -1,7 +1,7 @@
 "use client";
 
 import { FormEvent, useState } from "react";
-import { Loader2, LogIn } from "lucide-react";
+import { Loader2, LogIn, Mail } from "lucide-react";
 import { useRouter } from "next/navigation";
 
 import { Button } from "@/components/ui/button";
@@ -23,12 +23,15 @@ export function LoginForm() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [resetLoading, setResetLoading] = useState(false);
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setLoading(true);
     setError(null);
+    setNotice(null);
 
     let signInError: Error | null = null;
     try {
@@ -51,6 +54,35 @@ export function LoginForm() {
 
     router.replace(redirectTarget());
     router.refresh();
+  }
+
+  async function handlePasswordReset() {
+    const trimmedEmail = email.trim();
+    setError(null);
+    setNotice(null);
+
+    if (!trimmedEmail) {
+      setError("Enter your email first, then request a password reset.");
+      return;
+    }
+
+    setResetLoading(true);
+    try {
+      const supabase = createClient();
+      const redirectTo =
+        typeof window === "undefined"
+          ? undefined
+          : `${window.location.origin}/auth/update-password`;
+      const { error: resetError } = await supabase.auth.resetPasswordForEmail(trimmedEmail, {
+        redirectTo,
+      });
+      if (resetError) throw resetError;
+      setNotice("Password reset email sent. Open the link in that email to set a new password.");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not send password reset email.");
+    } finally {
+      setResetLoading(false);
+    }
   }
 
   return (
@@ -99,9 +131,26 @@ export function LoginForm() {
             </div>
           )}
 
+          {notice && (
+            <div className="rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-900">
+              {notice}
+            </div>
+          )}
+
           <Button type="submit" className="w-full" disabled={loading}>
             {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <LogIn className="h-4 w-4" />}
             Sign in
+          </Button>
+
+          <Button
+            type="button"
+            variant="link"
+            className="h-auto w-full p-0"
+            disabled={resetLoading}
+            onClick={() => void handlePasswordReset()}
+          >
+            {resetLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Mail className="h-4 w-4" />}
+            Forgot password?
           </Button>
         </form>
       </CardContent>

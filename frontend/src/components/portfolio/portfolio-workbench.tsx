@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   ApiError,
+  ApiNetworkError,
   confirmTransactionDraft,
   fetchLedgerSummary,
   fetchTransactionDrafts,
@@ -51,6 +52,9 @@ function apiErrorMessage(error: unknown) {
   }
   if (error instanceof Error && error.message === "Not authenticated") {
     return AUTH_REQUIRED_MESSAGE;
+  }
+  if (error instanceof ApiNetworkError) {
+    return error.message;
   }
   if (error instanceof Error) return error.message;
   return "Could not load portfolio ledger data.";

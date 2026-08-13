@@ -24,7 +24,12 @@ class Settings(BaseSettings):
     openai_api_key: str = ""
     anthropic_api_key: str = ""
 
-    backend_cors_origins: str = "http://localhost:3000"
+    backend_cors_origins: str = (
+        "http://localhost:3000,"
+        "http://127.0.0.1:3000,"
+        "http://localhost:3001,"
+        "http://127.0.0.1:3001"
+    )
 
     screener_cron_hour: int = 6
     screener_cron_minute: int = 0

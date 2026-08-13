@@ -29,6 +29,24 @@ export class ApiError extends Error {
   }
 }
 
+export class ApiNetworkError extends Error {
+  constructor(message: string, readonly cause?: unknown) {
+    super(message);
+  }
+}
+
+async function apiFetch(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
+  try {
+    return await fetch(input, init);
+  } catch (error) {
+    const target = typeof input === "string" ? input : input.toString();
+    throw new ApiNetworkError(
+      `Could not reach backend API at ${target}. Check that the FastAPI server is running and that BACKEND_CORS_ORIGINS includes this frontend origin.`,
+      error
+    );
+  }
+}
+
 async function authHeaders(includeJson = false): Promise<HeadersInit> {
   const supabase = createClient();
   const { data, error } = await supabase.auth.getSession();
@@ -59,7 +77,7 @@ async function parseResponse<T>(res: Response, fallbackMessage: string): Promise
 }
 
 export async function fetchInbox(status = "pending_review"): Promise<InboxItem[]> {
-  const res = await fetch(`${API_URL}/api/analysis/inbox?status=${status}`, {
+  const res = await apiFetch(`${API_URL}/api/analysis/inbox?status=${status}`, {
     headers: await authHeaders(),
     cache: "no-store",
   });
@@ -68,7 +86,7 @@ export async function fetchInbox(status = "pending_review"): Promise<InboxItem[]
 }
 
 export async function approveInboxItem(id: string) {
-  const res = await fetch(`${API_URL}/api/analysis/inbox/${id}/approve`, {
+  const res = await apiFetch(`${API_URL}/api/analysis/inbox/${id}/approve`, {
     method: "POST",
     headers: await authHeaders(),
   });
@@ -76,7 +94,7 @@ export async function approveInboxItem(id: string) {
 }
 
 export async function discardInboxItem(id: string) {
-  const res = await fetch(`${API_URL}/api/analysis/inbox/${id}/discard`, {
+  const res = await apiFetch(`${API_URL}/api/analysis/inbox/${id}/discard`, {
     method: "POST",
     headers: await authHeaders(),
   });
@@ -101,7 +119,7 @@ export type PortfolioHolding = {
 };
 
 export async function fetchPortfolio(): Promise<PortfolioHolding[]> {
-  const res = await fetch(`${API_URL}/api/portfolio/`, {
+  const res = await apiFetch(`${API_URL}/api/portfolio/`, {
     headers: await authHeaders(),
     cache: "no-store",
   });
@@ -113,7 +131,7 @@ export async function createPaperHoldingFromInbox(
   id: string,
   body: { shares: number; cost_basis?: number | null; notes?: string | null }
 ) {
-  const res = await fetch(`${API_URL}/api/portfolio/execute/${id}`, {
+  const res = await apiFetch(`${API_URL}/api/portfolio/execute/${id}`, {
     method: "POST",
     headers: await authHeaders(true),
     body: JSON.stringify(body),
@@ -149,7 +167,7 @@ export type LedgerSummary = {
 };
 
 export async function fetchLedgerSummary(): Promise<LedgerSummary> {
-  const res = await fetch(`${API_URL}/api/portfolio/ledger/summary`, {
+  const res = await apiFetch(`${API_URL}/api/portfolio/ledger/summary`, {
     headers: await authHeaders(),
     cache: "no-store",
   });
@@ -203,7 +221,7 @@ export async function fetchTransactionDrafts(
 ): Promise<TransactionDraft[]> {
   const params = new URLSearchParams({ status });
   if (importBatchId) params.set("import_batch_id", importBatchId);
-  const res = await fetch(`${API_URL}/api/portfolio/transaction-drafts?${params}`, {
+  const res = await apiFetch(`${API_URL}/api/portfolio/transaction-drafts?${params}`, {
     headers: await authHeaders(),
     cache: "no-store",
   });
@@ -215,7 +233,7 @@ export async function fetchTransactionDrafts(
 }
 
 export async function confirmTransactionDraft(id: string) {
-  const res = await fetch(`${API_URL}/api/portfolio/transaction-drafts/${id}/confirm`, {
+  const res = await apiFetch(`${API_URL}/api/portfolio/transaction-drafts/${id}/confirm`, {
     method: "POST",
     headers: await authHeaders(),
   });
@@ -226,7 +244,7 @@ export async function confirmTransactionDraft(id: string) {
 }
 
 export async function runScreener() {
-  const res = await fetch(`${API_URL}/api/screener/run`, {
+  const res = await apiFetch(`${API_URL}/api/screener/run`, {
     method: "POST",
     headers: await authHeaders(),
   });
@@ -234,7 +252,7 @@ export async function runScreener() {
 }
 
 export async function runSectorScreener(topNCandidates = 20) {
-  const res = await fetch(`${API_URL}/api/screener/run`, {
+  const res = await apiFetch(`${API_URL}/api/screener/run`, {
     method: "POST",
     headers: await authHeaders(true),
     body: JSON.stringify({ top_n_candidates: topNCandidates }),
@@ -243,7 +261,7 @@ export async function runSectorScreener(topNCandidates = 20) {
 }
 
 export async function triggerPipeline(body: { ticker_symbol: string; screening_run_id?: string | null }) {
-  const res = await fetch(`${API_URL}/api/screener/pipeline`, {
+  const res = await apiFetch(`${API_URL}/api/screener/pipeline`, {
     method: "POST",
     headers: await authHeaders(true),
     body: JSON.stringify(body),
@@ -297,7 +315,7 @@ export type ScreeningResult = {
 };
 
 export async function fetchLatestScreeningRun(): Promise<ScreeningRun | null> {
-  const res = await fetch(`${API_URL}/api/screener/runs/latest`, {
+  const res = await apiFetch(`${API_URL}/api/screener/runs/latest`, {
     headers: await authHeaders(),
     cache: "no-store",
   });
@@ -306,7 +324,7 @@ export async function fetchLatestScreeningRun(): Promise<ScreeningRun | null> {
 }
 
 export async function fetchScreeningResults(runId: string): Promise<ScreeningResult[]> {
-  const res = await fetch(
+  const res = await apiFetch(
     `${API_URL}/api/screener/runs/${runId}/results?limit=500&sort=total_score_desc`,
     { headers: await authHeaders(), cache: "no-store" }
   );
