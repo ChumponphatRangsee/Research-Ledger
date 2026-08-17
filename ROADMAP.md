@@ -20,11 +20,10 @@ The near-term experience should prioritize decision quality over breadth: an aud
 
 ## Next Recommended Task
 
-**PR 5 - Prices, FX, and Performance**
+**PR 5 - Prices, FX, and Performance (Portfolio Migration MVP)**
 
-Add portfolio valuation inputs, FX-to-THB support, historical performance
-snapshots, and MVP reconciliation checks on top of the reviewed transaction
-workflow and deterministic ledger projections.
+Add price and FX snapshots, extend `MarketDataService` for portfolio valuation,
+and rebuild account/portfolio performance from confirmed transaction history.
 
 ## Phase 1 - Foundation & Security
 
@@ -137,8 +136,8 @@ read-only archive only after reconciliation succeeds.
 - [x] Add draft create/update APIs and correction draft helper
 - [x] Add Transactions, Draft Review, Transaction Detail, and Import Errors views
 - [x] Add Correction/Reversal controls for editable correcting drafts
-- [ ] Add first-class correction transaction linkage if a later migration needs hard FK tracking beyond source metadata
-- [ ] Prevent AI or screenshot extraction from bypassing human confirmation
+- [x] Preserve correction provenance in source metadata without mutating confirmed transactions
+- [x] Prevent AI, screenshot, or import code paths from bypassing human confirmation
 
 ### PR 5 - Prices, FX, and Performance (Portfolio Migration MVP)
 
