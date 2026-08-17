@@ -1,9 +1,9 @@
 "use client";
 
 import {
-  BarChart3,
+  BookOpenText,
   BriefcaseBusiness,
-  Inbox,
+  Compass,
   LayoutDashboard,
   PanelLeft,
   Settings,
@@ -16,12 +16,24 @@ import { AuthStatus } from "@/components/auth/auth-status";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 
-const navigation = [
-  { label: "Dashboard", href: "/", icon: LayoutDashboard },
-  { label: "Analysis Inbox", href: "/inbox", icon: Inbox },
+const primaryNavigation = [
+  { label: "Overview", href: "/", icon: LayoutDashboard },
+];
+
+const workflowNavigation = [
+  { label: "Discover", href: "/screener", icon: Compass },
+  { label: "Research", href: "/inbox", icon: BookOpenText },
   { label: "Portfolio", href: "/portfolio", icon: BriefcaseBusiness },
-  { label: "Screening Runs", href: "/screener", icon: BarChart3 },
+];
+
+const systemNavigation = [
   { label: "Settings", href: "/settings", icon: Settings },
+];
+
+const navigation = [
+  ...primaryNavigation,
+  ...workflowNavigation,
+  ...systemNavigation,
 ];
 
 function isActivePath(pathname: string, href: string) {
@@ -44,33 +56,28 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             <Link href="/" className="block truncate text-sm font-semibold tracking-tight">
               Research Ledger
             </Link>
-            <p className="truncate text-[11px] text-muted-foreground">Analyst Workbench</p>
+            <p className="truncate text-[11px] text-muted-foreground">
+              Investment OS workspace
+            </p>
           </div>
         </div>
 
         <nav className="flex-1 space-y-1 p-3" aria-label="Primary navigation">
-          <p className="px-3 pb-2 pt-2 text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
-            Workspace
-          </p>
-          {navigation.map((item) => {
-            const active = isActivePath(pathname, item.href);
-            return (
-              <Link
-                key={item.href}
-                href={item.href}
-                aria-current={active ? "page" : undefined}
-                className={cn(
-                  "flex h-9 items-center gap-3 rounded-md px-3 text-sm font-medium transition-colors",
-                  active
-                    ? "bg-primary/10 text-primary"
-                    : "text-muted-foreground hover:bg-muted hover:text-foreground"
-                )}
-              >
-                <item.icon className="h-4 w-4 shrink-0" />
-                <span>{item.label}</span>
-              </Link>
-            );
-          })}
+          <NavigationLinks items={primaryNavigation} pathname={pathname} />
+
+          <div className="pt-4">
+            <p className="px-3 pb-2 text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+              Workflow
+            </p>
+            <NavigationLinks items={workflowNavigation} pathname={pathname} />
+          </div>
+
+          <div className="pt-4">
+            <p className="px-3 pb-2 text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+              System
+            </p>
+            <NavigationLinks items={systemNavigation} pathname={pathname} />
+          </div>
         </nav>
 
         <div className="border-t p-4">
@@ -92,14 +99,14 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             <Link
               href="/"
               className="flex h-8 w-8 items-center justify-center rounded-md bg-primary text-primary-foreground lg:hidden"
-              aria-label="Open dashboard"
+              aria-label="Go to overview"
             >
               <PanelLeft className="h-4 w-4" />
             </Link>
             <div className="min-w-0">
               <p className="truncate text-sm font-medium">{activeItem.label}</p>
               <p className="hidden text-xs text-muted-foreground sm:block">
-                Investment research workspace
+                From discovery to portfolio monitoring.
               </p>
             </div>
           </div>
@@ -117,6 +124,38 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           {children}
         </main>
       </div>
+    </div>
+  );
+}
+
+function NavigationLinks({
+  items,
+  pathname,
+}: {
+  items: typeof navigation;
+  pathname: string;
+}) {
+  return (
+    <div className="space-y-1">
+      {items.map((item) => {
+        const active = isActivePath(pathname, item.href);
+        return (
+          <Link
+            key={item.href}
+            href={item.href}
+            aria-current={active ? "page" : undefined}
+            className={cn(
+              "flex h-9 items-center gap-3 rounded-md px-3 text-sm font-medium transition-colors",
+              active
+                ? "bg-primary/10 text-primary"
+                : "text-muted-foreground hover:bg-muted hover:text-foreground"
+            )}
+          >
+            <item.icon className="h-4 w-4 shrink-0" />
+            <span>{item.label}</span>
+          </Link>
+        );
+      })}
     </div>
   );
 }
