@@ -226,8 +226,12 @@ class RecordingQuery:
         self.calls.append(("eq", column, value))
         return self
 
-    def order(self, column):
-        self.calls.append(("order", column))
+    def order(self, column, desc=False):
+        self.calls.append(("order", column, desc))
+        return self
+
+    def limit(self, value):
+        self.calls.append(("limit", value))
         return self
 
     def execute(self):
@@ -288,8 +292,36 @@ def test_repository_fetches_confirmed_transactions_for_verified_owner_only():
     assert len(records) == 1
     assert client.tables == ["transactions"]
     assert ("eq", "user_id", ACCOUNT_ID) in client.query.calls
-    assert ("order", "transaction_at") in client.query.calls
-    assert ("order", "ledger_sequence") in client.query.calls
+    assert ("order", "transaction_at", False) in client.query.calls
+    assert ("order", "ledger_sequence", False) in client.query.calls
+
+
+def test_repository_lists_confirmed_transactions_for_verified_owner_only():
+    client = RecordingClient(
+        [
+            {
+                "id": "tx-1",
+                "user_id": ACCOUNT_ID,
+                "transaction_type": "BUY",
+            }
+        ]
+    )
+
+    rows = SupabasePortfolioLedgerRepository(client).list_confirmed_transactions(
+        user_id=ACCOUNT_ID,
+        investment_account_id=ASSET_ID,
+        transaction_type="BUY",
+        limit=50,
+    )
+
+    assert rows == [{"id": "tx-1", "user_id": ACCOUNT_ID, "transaction_type": "BUY"}]
+    assert client.tables == ["transactions"]
+    assert ("eq", "user_id", ACCOUNT_ID) in client.query.calls
+    assert ("eq", "investment_account_id", ASSET_ID) in client.query.calls
+    assert ("eq", "transaction_type", "BUY") in client.query.calls
+    assert ("order", "transaction_at", True) in client.query.calls
+    assert ("order", "ledger_sequence", True) in client.query.calls
+    assert ("limit", 50) in client.query.calls
 
 
 def test_repository_rebuilds_owner_projection_rows_from_confirmed_transactions():

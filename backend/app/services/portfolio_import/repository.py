@@ -12,6 +12,39 @@ from app.db.supabase import get_supabase_client
 from app.services.portfolio_import.models import ImportPlan, NormalizedTransaction
 
 
+IMPORT_BATCH_SELECT = """
+id,
+user_id,
+source_type,
+source_identifier,
+source_filename,
+source_fingerprint,
+status,
+raw_source_data,
+source_metadata,
+started_at,
+completed_at,
+created_at,
+updated_at
+"""
+
+IMPORT_ERROR_SELECT = """
+id,
+user_id,
+import_batch_id,
+transaction_draft_id,
+source_identifier,
+source_row_number,
+raw_source_data,
+error_code,
+error_message,
+error_details,
+created_at,
+updated_at,
+transaction_import_batches(source_type, source_filename, status, created_at)
+"""
+
+
 class SupabaseTransactionImportRepository:
     """Stage spreadsheet output without ever inserting confirmed transactions."""
 
@@ -46,6 +79,43 @@ class SupabaseTransactionImportRepository:
                 if isinstance(fingerprint, str):
                     existing.add(fingerprint)
         return existing
+
+    def list_batches(
+        self,
+        *,
+        user_id: UUID,
+        limit: int = 50,
+    ) -> list[dict[str, Any]]:
+        response = (
+            self._get_client()
+            .table("transaction_import_batches")
+            .select(IMPORT_BATCH_SELECT)
+            .eq("user_id", str(user_id))
+            .order("created_at", desc=True)
+            .limit(limit)
+            .execute()
+        )
+        return response.data or []
+
+    def list_errors(
+        self,
+        *,
+        user_id: UUID,
+        import_batch_id: UUID | None = None,
+        limit: int = 200,
+    ) -> list[dict[str, Any]]:
+        query = (
+            self._get_client()
+            .table("transaction_import_errors")
+            .select(IMPORT_ERROR_SELECT)
+            .eq("user_id", str(user_id))
+            .order("created_at", desc=True)
+            .limit(limit)
+        )
+        if import_batch_id is not None:
+            query = query.eq("import_batch_id", str(import_batch_id))
+        response = query.execute()
+        return response.data or []
 
     def stage(self, plan: ImportPlan, *, user_id: UUID) -> ImportPlan:
         client = self._get_client()

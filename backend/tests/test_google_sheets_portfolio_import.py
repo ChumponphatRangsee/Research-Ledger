@@ -345,6 +345,10 @@ class RecordingQuery:
         self.filters.append((column, tuple(values)))
         return self
 
+    def order(self, column: str, desc: bool = False):
+        self.filters.append(("order", column, desc))
+        return self
+
     def limit(self, count: int):
         self.filters.append(("limit", count))
         return self
@@ -450,6 +454,49 @@ def test_repository_scopes_dedup_reads_to_verified_owner():
         "transactions",
     }
     assert all(("user_id", str(USER_ID)) in query.filters for query in client.queries)
+
+
+def test_repository_lists_import_batches_for_verified_owner():
+    client = RecordingClient()
+    client.select_data = {
+        "transaction_import_batches": [{"id": "batch-id", "user_id": str(USER_ID)}],
+    }
+
+    batches = SupabaseTransactionImportRepository(client).list_batches(
+        user_id=USER_ID,
+        limit=25,
+    )
+
+    assert batches == [{"id": "batch-id", "user_id": str(USER_ID)}]
+    query = client.queries[0]
+    assert query.table == "transaction_import_batches"
+    assert ("user_id", str(USER_ID)) in query.filters
+    assert ("order", "created_at", True) in query.filters
+    assert ("limit", 25) in query.filters
+
+
+def test_repository_lists_import_errors_for_verified_owner_and_batch():
+    client = RecordingClient()
+    client.select_data = {
+        "transaction_import_errors": [{"id": "error-id", "user_id": str(USER_ID)}],
+    }
+
+    errors = SupabaseTransactionImportRepository(client).list_errors(
+        user_id=USER_ID,
+        import_batch_id=UUID("33333333-3333-4333-8333-333333333333"),
+        limit=40,
+    )
+
+    assert errors == [{"id": "error-id", "user_id": str(USER_ID)}]
+    query = client.queries[0]
+    assert query.table == "transaction_import_errors"
+    assert ("user_id", str(USER_ID)) in query.filters
+    assert (
+        "import_batch_id",
+        "33333333-3333-4333-8333-333333333333",
+    ) in query.filters
+    assert ("order", "created_at", True) in query.filters
+    assert ("limit", 40) in query.filters
 
 
 def test_repository_stages_drafts_and_never_confirms_transactions(tmp_path: Path):

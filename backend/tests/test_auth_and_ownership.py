@@ -427,6 +427,68 @@ def test_portfolio_list_filters_to_current_user(monkeypatch):
     app.dependency_overrides.clear()
 
 
+def test_investment_account_list_filters_to_current_user(monkeypatch):
+    query = FakeQuery(data=[{"id": "account-1", "user_id": str(USER_A)}])
+    fake_supabase = FakeSupabaseClient([query])
+    monkeypatch.setattr(portfolio, "get_supabase_client", lambda: fake_supabase)
+    client, app = make_client(USER_A)
+
+    response = client.get(f"/api/portfolio/investment-accounts?user_id={USER_B}")
+
+    assert response.status_code == 200
+    assert response.json()["count"] == 1
+    assert fake_supabase.tables == ["investment_accounts"]
+    assert ("eq", "user_id", str(USER_A)) in query.calls
+    assert ("eq", "user_id", str(USER_B)) not in query.calls
+    assert ("order", "name", False) in query.calls
+    app.dependency_overrides.clear()
+
+
+def test_create_investment_account_inserts_current_user(monkeypatch):
+    query = FakeQuery(data=[{"id": "account-1", "user_id": str(USER_A)}])
+    fake_supabase = FakeSupabaseClient([query])
+    monkeypatch.setattr(portfolio, "get_supabase_client", lambda: fake_supabase)
+    client, app = make_client(USER_A)
+
+    response = client.post(
+        "/api/portfolio/investment-accounts",
+        json={
+            "name": " Spouse - Broker ",
+            "account_type": "BROKERAGE",
+            "institution_name": " Broker A ",
+            "currency": "usd",
+        },
+    )
+
+    assert response.status_code == 200
+    assert query.insert_payload["user_id"] == str(USER_A)
+    assert query.insert_payload["name"] == "Spouse - Broker"
+    assert query.insert_payload["institution_name"] == "Broker A"
+    assert query.insert_payload["currency"] == "USD"
+    assert query.insert_payload["source_metadata"] == {"entry_method": "manual"}
+    app.dependency_overrides.clear()
+
+
+def test_create_investment_account_rejects_spoofed_user_id(monkeypatch):
+    query = FakeQuery(data=[{"id": "account-1", "user_id": str(USER_A)}])
+    fake_supabase = FakeSupabaseClient([query])
+    monkeypatch.setattr(portfolio, "get_supabase_client", lambda: fake_supabase)
+    client, app = make_client(USER_A)
+
+    response = client.post(
+        "/api/portfolio/investment-accounts",
+        json={
+            "user_id": str(USER_B),
+            "name": "Dad - Fund",
+            "account_type": "BROKERAGE",
+        },
+    )
+
+    assert response.status_code == 422
+    assert query.insert_payload is None
+    app.dependency_overrides.clear()
+
+
 def test_portfolio_ledger_summary_uses_current_user(monkeypatch):
     calls = []
 
@@ -480,6 +542,311 @@ def test_portfolio_ledger_rebuild_uses_current_user(monkeypatch):
     assert response.status_code == 200
     assert response.json()["positions"] == []
     assert calls == [USER_A]
+    app.dependency_overrides.clear()
+
+
+def test_confirmed_transaction_list_uses_current_user(monkeypatch):
+    calls = []
+
+    class FakeLedgerRepository:
+        def list_confirmed_transactions(
+            self,
+            *,
+            user_id,
+            investment_account_id,
+            transaction_type,
+            limit,
+        ):
+            calls.append((user_id, investment_account_id, transaction_type, limit))
+            return [{"id": "transaction-id", "user_id": str(user_id)}]
+
+    monkeypatch.setattr(
+        portfolio,
+        "SupabasePortfolioLedgerRepository",
+        lambda: FakeLedgerRepository(),
+    )
+    client, app = make_client(USER_A)
+
+    response = client.get(
+        f"/api/portfolio/transactions?user_id={USER_B}"
+        f"&investment_account_id={INBOX_ID}&transaction_type=BUY&limit=25"
+    )
+
+    assert response.status_code == 200
+    assert response.json()["count"] == 1
+    assert calls == [(USER_A, INBOX_ID, "BUY", 25)]
+    app.dependency_overrides.clear()
+
+
+def test_confirmed_transaction_detail_uses_current_user(monkeypatch):
+    calls = []
+
+    class FakeLedgerRepository:
+        def get_confirmed_transaction(self, *, user_id, transaction_id):
+            calls.append((user_id, transaction_id))
+            return {"id": str(transaction_id), "user_id": str(user_id)}
+
+    monkeypatch.setattr(
+        portfolio,
+        "SupabasePortfolioLedgerRepository",
+        lambda: FakeLedgerRepository(),
+    )
+    client, app = make_client(USER_A)
+
+    response = client.get(f"/api/portfolio/transactions/{INBOX_ID}?user_id={USER_B}")
+
+    assert response.status_code == 200
+    assert response.json()["transaction"]["id"] == str(INBOX_ID)
+    assert calls == [(USER_A, INBOX_ID)]
+    app.dependency_overrides.clear()
+
+
+def test_confirmed_transaction_detail_hides_other_users_transaction(monkeypatch):
+    class FakeLedgerRepository:
+        def get_confirmed_transaction(self, *, user_id, transaction_id):
+            return None
+
+    monkeypatch.setattr(
+        portfolio,
+        "SupabasePortfolioLedgerRepository",
+        lambda: FakeLedgerRepository(),
+    )
+    client, app = make_client(USER_A)
+
+    response = client.get(f"/api/portfolio/transactions/{INBOX_ID}")
+
+    assert response.status_code == 404
+    app.dependency_overrides.clear()
+
+
+def test_reversal_draft_create_uses_current_user(monkeypatch):
+    calls = []
+
+    class FakeWorkflowRepository:
+        def create_reversal_draft(
+            self,
+            *,
+            user_id,
+            transaction_id,
+            transaction_at,
+            notes,
+        ):
+            calls.append((user_id, transaction_id, transaction_at, notes))
+            return {"id": "draft-id", "user_id": str(user_id)}
+
+    monkeypatch.setattr(
+        portfolio,
+        "SupabaseTransactionWorkflowRepository",
+        lambda: FakeWorkflowRepository(),
+    )
+    client, app = make_client(USER_A)
+
+    response = client.post(
+        f"/api/portfolio/transactions/{INBOX_ID}/reversal-draft?user_id={USER_B}",
+        json={"notes": " reverse this ", "user_id": str(USER_B)},
+    )
+
+    assert response.status_code == 422
+    assert calls == []
+
+    response = client.post(
+        f"/api/portfolio/transactions/{INBOX_ID}/reversal-draft?user_id={USER_B}",
+        json={"notes": " reverse this "},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["draft"]["id"] == "draft-id"
+    assert calls == [(USER_A, INBOX_ID, None, "reverse this")]
+    app.dependency_overrides.clear()
+
+
+def test_reversal_draft_create_hides_other_users_transaction(monkeypatch):
+    class FakeWorkflowRepository:
+        def create_reversal_draft(self, **_kwargs):
+            raise portfolio.TransactionNotFound
+
+    monkeypatch.setattr(
+        portfolio,
+        "SupabaseTransactionWorkflowRepository",
+        lambda: FakeWorkflowRepository(),
+    )
+    client, app = make_client(USER_A)
+
+    response = client.post(f"/api/portfolio/transactions/{INBOX_ID}/reversal-draft")
+
+    assert response.status_code == 404
+    app.dependency_overrides.clear()
+
+
+def test_transaction_draft_create_uses_current_user(monkeypatch):
+    calls = []
+
+    class FakeWorkflowRepository:
+        def create_draft(self, *, user_id, payload):
+            calls.append((user_id, payload))
+            return {"id": "draft-id", "user_id": str(user_id)}
+
+    monkeypatch.setattr(
+        portfolio,
+        "SupabaseTransactionWorkflowRepository",
+        lambda: FakeWorkflowRepository(),
+    )
+    client, app = make_client(USER_A)
+
+    response = client.post(
+        "/api/portfolio/transaction-drafts",
+        json={
+            "user_id": str(USER_B),
+            "investment_account_id": str(INBOX_ID),
+            "asset_id": str(TICKER_ID),
+            "transaction_type": "BUY",
+            "transaction_at": "2026-01-02T00:00:00+00:00",
+            "quantity": "1",
+            "unit_price": "10",
+            "currency": " usd ",
+        },
+    )
+
+    assert response.status_code == 422
+    assert calls == []
+
+    response = client.post(
+        "/api/portfolio/transaction-drafts",
+        json={
+            "investment_account_id": str(INBOX_ID),
+            "asset_id": str(TICKER_ID),
+            "transaction_type": "BUY",
+            "transaction_at": "2026-01-02T00:00:00+00:00",
+            "quantity": "1",
+            "unit_price": "10",
+            "currency": "usd",
+            "notes": " manual ",
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json()["draft"]["id"] == "draft-id"
+    assert calls[0][0] == USER_A
+    assert "user_id" not in calls[0][1]
+    assert calls[0][1]["currency"] == "USD"
+    assert calls[0][1]["notes"] == "manual"
+    app.dependency_overrides.clear()
+
+
+def test_transaction_draft_update_uses_current_user(monkeypatch):
+    calls = []
+
+    class FakeWorkflowRepository:
+        def update_draft(self, *, user_id, draft_id, payload):
+            calls.append((user_id, draft_id, payload))
+            return {"id": str(draft_id), "user_id": str(user_id)}
+
+    monkeypatch.setattr(
+        portfolio,
+        "SupabaseTransactionWorkflowRepository",
+        lambda: FakeWorkflowRepository(),
+    )
+    client, app = make_client(USER_A)
+
+    response = client.patch(
+        f"/api/portfolio/transaction-drafts/{INBOX_ID}?user_id={USER_B}",
+        json={"notes": " fixed ", "user_id": str(USER_B)},
+    )
+
+    assert response.status_code == 422
+    assert calls == []
+
+    response = client.patch(
+        f"/api/portfolio/transaction-drafts/{INBOX_ID}?user_id={USER_B}",
+        json={"notes": " fixed ", "currency": "thb"},
+    )
+
+    assert response.status_code == 200
+    assert calls == [(USER_A, INBOX_ID, {"currency": "THB", "notes": "fixed"})]
+    app.dependency_overrides.clear()
+
+
+def test_correction_draft_create_uses_current_user(monkeypatch):
+    calls = []
+
+    class FakeWorkflowRepository:
+        def create_correction_draft(self, *, user_id, transaction_id, payload):
+            calls.append((user_id, transaction_id, payload))
+            return {"id": "draft-id", "user_id": str(user_id)}
+
+    monkeypatch.setattr(
+        portfolio,
+        "SupabaseTransactionWorkflowRepository",
+        lambda: FakeWorkflowRepository(),
+    )
+    client, app = make_client(USER_A)
+
+    response = client.post(
+        f"/api/portfolio/transactions/{INBOX_ID}/correction-draft?user_id={USER_B}",
+        json={"notes": " corrected ", "user_id": str(USER_B)},
+    )
+
+    assert response.status_code == 422
+    assert calls == []
+
+    response = client.post(
+        f"/api/portfolio/transactions/{INBOX_ID}/correction-draft?user_id={USER_B}",
+        json={"notes": " corrected ", "quantity": "2"},
+    )
+
+    assert response.status_code == 200
+    assert calls == [(USER_A, INBOX_ID, {"quantity": "2", "notes": "corrected"})]
+    app.dependency_overrides.clear()
+
+
+def test_transaction_import_batch_list_uses_current_user(monkeypatch):
+    calls = []
+
+    class FakeImportRepository:
+        def list_batches(self, *, user_id, limit):
+            calls.append((user_id, limit))
+            return [{"id": "batch-id", "user_id": str(user_id)}]
+
+    monkeypatch.setattr(
+        portfolio,
+        "SupabaseTransactionImportRepository",
+        lambda: FakeImportRepository(),
+    )
+    client, app = make_client(USER_A)
+
+    response = client.get(
+        f"/api/portfolio/transaction-import-batches?user_id={USER_B}&limit=20"
+    )
+
+    assert response.status_code == 200
+    assert response.json()["count"] == 1
+    assert calls == [(USER_A, 20)]
+    app.dependency_overrides.clear()
+
+
+def test_transaction_import_error_list_uses_current_user(monkeypatch):
+    calls = []
+
+    class FakeImportRepository:
+        def list_errors(self, *, user_id, import_batch_id, limit):
+            calls.append((user_id, import_batch_id, limit))
+            return [{"id": "error-id", "user_id": str(user_id)}]
+
+    monkeypatch.setattr(
+        portfolio,
+        "SupabaseTransactionImportRepository",
+        lambda: FakeImportRepository(),
+    )
+    client, app = make_client(USER_A)
+
+    response = client.get(
+        f"/api/portfolio/transaction-import-errors?user_id={USER_B}"
+        f"&import_batch_id={INBOX_ID}&limit=25"
+    )
+
+    assert response.status_code == 200
+    assert response.json()["count"] == 1
+    assert calls == [(USER_A, INBOX_ID, 25)]
     app.dependency_overrides.clear()
 
 
