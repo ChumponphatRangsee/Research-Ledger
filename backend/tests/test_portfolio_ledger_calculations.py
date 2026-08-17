@@ -220,10 +220,27 @@ class RecordingClient:
     def __init__(self, data):
         self.query = RecordingQuery(data)
         self.tables = []
+        self.rpcs = []
 
     def table(self, table):
         self.tables.append(table)
         return self.query
+
+    def rpc(self, name, params):
+        rpc = RecordingRpc(name, params)
+        self.rpcs.append(rpc)
+        return rpc
+
+
+class RecordingRpc:
+    def __init__(self, name, params):
+        self.name = name
+        self.params = params
+        self.executed = False
+
+    def execute(self):
+        self.executed = True
+        return type("Response", (), {"data": None})()
 
 
 def test_repository_fetches_confirmed_transactions_for_verified_owner_only():
@@ -255,3 +272,54 @@ def test_repository_fetches_confirmed_transactions_for_verified_owner_only():
     assert ("eq", "user_id", ACCOUNT_ID) in client.query.calls
     assert ("order", "transaction_at") in client.query.calls
     assert ("order", "ledger_sequence") in client.query.calls
+
+
+def test_repository_rebuilds_owner_projection_rows_from_confirmed_transactions():
+    client = RecordingClient(
+        [
+            {
+                "id": "tx-1",
+                "investment_account_id": ACCOUNT_ID,
+                "asset_id": ASSET_ID,
+                "transaction_type": "BUY",
+                "transaction_at": "2026-01-01T00:00:00Z",
+                "ledger_sequence": 1,
+                "quantity": "2",
+                "unit_price": "100",
+                "gross_amount": None,
+                "fee_amount": "1",
+                "fee_unit": "QUOTE_CURRENCY",
+                "currency": "USD",
+                "fx_rate_to_thb": "35",
+                "investment_accounts": {"name": "Best"},
+                "assets": {"symbol": "MSFT", "asset_type": "STOCK", "currency": "USD"},
+            }
+        ]
+    )
+
+    snapshot = SupabasePortfolioLedgerRepository(client).rebuild_position_projections(
+        user_id=ACCOUNT_ID
+    )
+
+    assert snapshot.total_cost_basis_thb == Decimal("7035")
+    assert len(client.rpcs) == 1
+    rpc = client.rpcs[0]
+    assert rpc.executed
+    assert rpc.name == "replace_portfolio_position_projections"
+    assert rpc.params["p_user_id"] == ACCOUNT_ID
+    assert rpc.params["p_rows"] == [
+        {
+            "investment_account_id": ACCOUNT_ID,
+            "asset_id": ASSET_ID,
+            "quantity": "2",
+            "cost_basis_thb": "7035",
+            "weighted_average_cost_thb": "3517.5",
+            "realized_pnl_thb": "0",
+            "income_thb": "0",
+            "fees_thb": "35",
+            "cash_flow_thb": "-7035",
+            "market_value_thb": None,
+            "unrealized_pnl_thb": None,
+            "allocation_pct": None,
+        }
+    ]

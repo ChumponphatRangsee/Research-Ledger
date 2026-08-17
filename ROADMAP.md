@@ -20,12 +20,11 @@ The near-term experience should prioritize decision quality over breadth: an aud
 
 ## Next Recommended Task
 
-**PR 3 - Deterministic Portfolio Calculation Engine**
+**PR 4 - Transaction Workflow**
 
-Replay reviewed confirmed transactions deterministically by account and asset.
-Calculate weighted-average cost, THB cost basis, realized and unrealized P&L,
-income, cash flows, and allocation without importing spreadsheet formulas as
-ledger truth.
+Add draft create/read/update APIs, transaction list and linked
+reversal/correction APIs, and the review UI needed to confirm or correct
+transactions without bypassing human approval.
 
 ## Phase 1 - Foundation & Security
 
@@ -126,10 +125,10 @@ read-only archive only after reconciliation succeeds.
 
 ### PR 3 - Deterministic Portfolio Calculation Engine
 
-- [ ] Replay confirmed transactions chronologically by account and asset
-- [ ] Calculate quantity, weighted-average cost, THB cost basis, realized P&L, unrealized P&L, income, cash flows, and allocations
-- [ ] Add rebuildable projections and `security_invoker = true` views
-- [ ] Recalculate from ledger rows rather than importing formula-derived summary tabs
+- [x] Replay confirmed transactions chronologically by account and asset
+- [x] Calculate quantity, weighted-average cost, THB cost basis, realized P&L, unrealized P&L, income, cash flows, and allocations
+- [x] Add rebuildable projections and `security_invoker = true` views
+- [x] Recalculate from ledger rows rather than importing formula-derived summary tabs
 
 ### PR 4 - Transaction Workflow
 

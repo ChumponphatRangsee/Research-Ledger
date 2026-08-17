@@ -46,6 +46,15 @@ async def portfolio_ledger_summary(
     return snapshot.to_report()
 
 
+@router.post("/ledger/rebuild")
+async def rebuild_portfolio_ledger(
+    current_user: AuthenticatedUser = Depends(require_user),
+):
+    repository = SupabasePortfolioLedgerRepository()
+    snapshot = repository.rebuild_position_projections(user_id=current_user.id)
+    return snapshot.to_report()
+
+
 @router.get("/transaction-drafts")
 async def list_transaction_drafts(
     status: Literal["pending", "confirmed", "all"] = "pending",

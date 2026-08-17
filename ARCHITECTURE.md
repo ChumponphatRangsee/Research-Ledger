@@ -258,7 +258,11 @@ No node currently calls a configured LLM. Structured sourced research, explicit 
   ordering, owner-scoped fingerprints, and linked reversals;
 - `transaction_import_batches`: owner-scoped import-run metadata; and
 - `transaction_import_errors`: owner-scoped structured row errors retaining raw
-  source evidence.
+  source evidence;
+- `portfolio_position_projections`: owner-scoped, rebuildable derived position
+  state calculated from confirmed transactions; and
+- `portfolio_positions` / `portfolio_summary`: `security_invoker` views over
+  the projection rows for user-facing reads.
 
 Important relationships:
 
@@ -275,6 +279,7 @@ auth.users
   `-> transactions -> investment_accounts + assets
           +-> confirmed source draft (optional)
           `-> original transaction (REVERSAL only)
+  `-> portfolio_position_projections -> investment_accounts + assets
 ```
 
 Migrations enforce ownership foreign keys, RLS, indexes, a unique result per
@@ -338,8 +343,9 @@ Google Sheets export
   -> dry-run report
   -> human-confirmed immutable transactions
   -> deterministic ledger replay
+  -> rebuildable position projections
   -> positions / cost basis / P&L / cash flows / allocation
-  -> FastAPI and security-invoker views
+  -> FastAPI summary and security-invoker views
   -> Next.js portfolio experience and AI portfolio context
 ```
 
@@ -350,6 +356,20 @@ can reference the same shared ticker, while other asset classes remain
 independent.
 
 The ledger uses THB as base currency and weighted-average cost by account and asset. Confirmed transactions are append-only; a mistake produces a linked reversal/correction transaction. All quantity, price, fee, FX, cost-basis, and P&L values use PostgreSQL `numeric`. Derived positions and performance are rebuildable projections, not manually edited truth.
+
+Implemented PR 3 calculation boundary:
+
+```text
+confirmed transactions
+  -> deterministic Python replay by account and asset
+  -> rebuildable portfolio_position_projections
+  -> security-invoker portfolio_positions / portfolio_summary views
+```
+
+The projection replacement RPC is service-role-only, `SECURITY INVOKER`, and
+replaces rows for one verified owner at a time. Authenticated users can read
+their own projections through RLS and the security-invoker views, but cannot
+insert, update, delete, or rebuild projection rows directly.
 
 Transactions extracted from spreadsheets, screenshots, or AI remain drafts
 until human confirmation. The PR 2 spreadsheet importer accepts only the
