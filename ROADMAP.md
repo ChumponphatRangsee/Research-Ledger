@@ -20,11 +20,10 @@ The near-term experience should prioritize decision quality over breadth: an aud
 
 ## Next Recommended Task
 
-**PR 4 - Transaction Workflow**
+**PR 5 - Prices, FX, and Performance (Portfolio Migration MVP)**
 
-Add draft create/read/update APIs, transaction list and linked
-reversal/correction APIs, and the review UI needed to confirm or correct
-transactions without bypassing human approval.
+Add price and FX snapshots, extend `MarketDataService` for portfolio valuation,
+and rebuild account/portfolio performance from confirmed transaction history.
 
 ## Phase 1 - Foundation & Security
 
@@ -132,10 +131,13 @@ read-only archive only after reconciliation succeeds.
 
 ### PR 4 - Transaction Workflow
 
-- [ ] Add draft create/read/update and atomic idempotent confirmation APIs
-- [ ] Add transaction list and linked reversal/correction APIs
-- [ ] Add Transactions, Draft Review, Transaction Detail, Correction/Reversal, and Import Errors pages
-- [ ] Prevent AI or screenshot extraction from bypassing human confirmation
+- [x] Add draft read and atomic idempotent confirmation APIs
+- [x] Add transaction list and linked reversal draft API
+- [x] Add draft create/update APIs and correction draft helper
+- [x] Add Transactions, Draft Review, Transaction Detail, and Import Errors views
+- [x] Add Correction/Reversal controls for editable correcting drafts
+- [x] Preserve correction provenance in source metadata without mutating confirmed transactions
+- [x] Prevent AI, screenshot, or import code paths from bypassing human confirmation
 
 ### PR 5 - Prices, FX, and Performance (Portfolio Migration MVP)
 

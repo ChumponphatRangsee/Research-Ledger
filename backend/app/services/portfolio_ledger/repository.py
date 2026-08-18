@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from typing import Any
 from uuid import UUID
 
 from supabase import Client
@@ -33,6 +34,33 @@ investment_accounts(name),
 assets(symbol, asset_type, currency)
 """
 
+TRANSACTION_LIST_SELECT = """
+id,
+user_id,
+investment_account_id,
+asset_id,
+confirmed_from_draft_id,
+reversal_of_transaction_id,
+transaction_type,
+transaction_at,
+ledger_sequence,
+quantity,
+unit_price,
+gross_amount,
+fee_amount,
+fee_unit,
+currency,
+fx_rate_to_thb,
+source_type,
+source_identifier,
+source_row_number,
+source_fingerprint,
+notes,
+created_at,
+investment_accounts(name, account_type),
+assets(symbol, name, asset_type, currency)
+"""
+
 
 class SupabasePortfolioLedgerRepository:
     def __init__(self, client: Client | None = None) -> None:
@@ -55,6 +83,48 @@ class SupabasePortfolioLedgerRepository:
             TransactionRecord.from_supabase_row(row)
             for row in response.data or []
         ]
+
+    def list_confirmed_transactions(
+        self,
+        *,
+        user_id: UUID,
+        investment_account_id: UUID | None = None,
+        transaction_type: str | None = None,
+        limit: int = 200,
+    ) -> list[dict[str, Any]]:
+        query = (
+            self._get_client()
+            .table("transactions")
+            .select(TRANSACTION_LIST_SELECT)
+            .eq("user_id", str(user_id))
+            .order("transaction_at", desc=True)
+            .order("ledger_sequence", desc=True)
+            .limit(limit)
+        )
+        if investment_account_id is not None:
+            query = query.eq("investment_account_id", str(investment_account_id))
+        if transaction_type is not None:
+            query = query.eq("transaction_type", transaction_type)
+        response = query.execute()
+        return response.data or []
+
+    def get_confirmed_transaction(
+        self,
+        *,
+        user_id: UUID,
+        transaction_id: UUID,
+    ) -> dict[str, Any] | None:
+        response = (
+            self._get_client()
+            .table("transactions")
+            .select(TRANSACTION_LIST_SELECT)
+            .eq("user_id", str(user_id))
+            .eq("id", str(transaction_id))
+            .limit(1)
+            .execute()
+        )
+        data = response.data or []
+        return data[0] if data else None
 
     def build_snapshot(self, *, user_id: UUID) -> LedgerSnapshot:
         return build_ledger_snapshot(

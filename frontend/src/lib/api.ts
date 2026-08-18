@@ -139,6 +139,57 @@ export async function createPaperHoldingFromInbox(
   return parseResponse(res, "Failed to create paper holding");
 }
 
+export type InvestmentAccountType =
+  | "BROKERAGE"
+  | "CRYPTO_EXCHANGE"
+  | "CRYPTO_WALLET"
+  | "BANK"
+  | "CASH"
+  | "OTHER";
+
+export type InvestmentAccount = {
+  id: string;
+  user_id: string;
+  name: string;
+  account_type: InvestmentAccountType;
+  institution_name: string | null;
+  external_identifier: string | null;
+  currency: string;
+  created_at: string;
+  updated_at: string;
+};
+
+export async function fetchInvestmentAccounts(): Promise<InvestmentAccount[]> {
+  const res = await apiFetch(`${API_URL}/api/portfolio/investment-accounts`, {
+    headers: await authHeaders(),
+    cache: "no-store",
+  });
+  const data = await parseResponse<{ accounts: InvestmentAccount[] }>(
+    res,
+    "Failed to fetch investment accounts"
+  );
+  return data.accounts;
+}
+
+export async function createInvestmentAccount(body: {
+  name: string;
+  account_type: InvestmentAccountType;
+  institution_name?: string | null;
+  external_identifier?: string | null;
+  currency?: string | null;
+}): Promise<InvestmentAccount | null> {
+  const res = await apiFetch(`${API_URL}/api/portfolio/investment-accounts`, {
+    method: "POST",
+    headers: await authHeaders(true),
+    body: JSON.stringify(body),
+  });
+  const data = await parseResponse<{ account: InvestmentAccount | null }>(
+    res,
+    "Failed to create investment account"
+  );
+  return data.account;
+}
+
 export type LedgerPosition = {
   investment_account_id: string;
   investment_account_name: string | null;
@@ -162,7 +213,13 @@ export type LedgerSummary = {
   total_cost_basis_thb: string;
   total_realized_pnl_thb: string;
   total_income_thb: string;
+  total_fees_thb: string;
+  total_cash_flow_thb: string;
   total_market_value_thb: string | null;
+  total_unrealized_pnl_thb: string | null;
+  source_transaction_count: number;
+  as_of_transaction_at: string | null;
+  as_of_ledger_sequence: number | null;
   positions: LedgerPosition[];
 };
 
@@ -172,6 +229,14 @@ export async function fetchLedgerSummary(): Promise<LedgerSummary> {
     cache: "no-store",
   });
   return parseResponse<LedgerSummary>(res, "Failed to fetch ledger summary");
+}
+
+export async function rebuildLedgerProjections(): Promise<LedgerSummary> {
+  const res = await apiFetch(`${API_URL}/api/portfolio/ledger/rebuild`, {
+    method: "POST",
+    headers: await authHeaders(),
+  });
+  return parseResponse<LedgerSummary>(res, "Failed to rebuild ledger projections");
 }
 
 export type TransactionDraftStatus = "pending" | "confirmed" | "all";
@@ -241,6 +306,236 @@ export async function confirmTransactionDraft(id: string) {
     res,
     "Failed to confirm transaction draft"
   );
+}
+
+export type TransactionDraftMutation = {
+  transaction_at?: string | null;
+  quantity?: string | number | null;
+  unit_price?: string | number | null;
+  gross_amount?: string | number | null;
+  fee_amount?: string | number | null;
+  fee_unit?: "QUOTE_CURRENCY" | "ASSET_UNITS" | null;
+  currency?: string | null;
+  fx_rate_to_thb?: string | number | null;
+  source_identifier?: string | null;
+  source_row_number?: number | null;
+  source_fingerprint?: string | null;
+  notes?: string | null;
+};
+
+export async function updateTransactionDraft(
+  id: string,
+  body: TransactionDraftMutation
+): Promise<TransactionDraft> {
+  const res = await apiFetch(`${API_URL}/api/portfolio/transaction-drafts/${id}`, {
+    method: "PATCH",
+    headers: await authHeaders(true),
+    body: JSON.stringify(body),
+  });
+  const data = await parseResponse<{ status: string; draft: TransactionDraft }>(
+    res,
+    "Failed to update transaction draft"
+  );
+  return data.draft;
+}
+
+export type ConfirmedTransaction = {
+  id: string;
+  user_id: string;
+  investment_account_id: string;
+  asset_id: string;
+  confirmed_from_draft_id: string | null;
+  reversal_of_transaction_id: string | null;
+  transaction_type: string;
+  transaction_at: string;
+  ledger_sequence: number;
+  quantity: string | number | null;
+  unit_price: string | number | null;
+  gross_amount: string | number | null;
+  fee_amount: string | number | null;
+  fee_unit: string | null;
+  currency: string;
+  fx_rate_to_thb: string | number | null;
+  source_type: string;
+  source_identifier: string | null;
+  source_row_number: number | null;
+  source_fingerprint: string | null;
+  notes: string | null;
+  created_at: string;
+  investment_accounts: {
+    name: string | null;
+    account_type: string | null;
+  } | null;
+  assets: {
+    symbol: string | null;
+    name: string | null;
+    asset_type: string | null;
+    currency: string | null;
+  } | null;
+};
+
+export async function fetchConfirmedTransactions(params?: {
+  investmentAccountId?: string | null;
+  transactionType?: string | null;
+  limit?: number;
+}): Promise<ConfirmedTransaction[]> {
+  const query = new URLSearchParams();
+  if (params?.investmentAccountId) {
+    query.set("investment_account_id", params.investmentAccountId);
+  }
+  if (params?.transactionType) {
+    query.set("transaction_type", params.transactionType);
+  }
+  if (params?.limit) {
+    query.set("limit", String(params.limit));
+  }
+  const suffix = query.toString() ? `?${query}` : "";
+  const res = await apiFetch(`${API_URL}/api/portfolio/transactions${suffix}`, {
+    headers: await authHeaders(),
+    cache: "no-store",
+  });
+  const data = await parseResponse<{ transactions: ConfirmedTransaction[] }>(
+    res,
+    "Failed to fetch confirmed transactions"
+  );
+  return data.transactions;
+}
+
+export async function fetchConfirmedTransaction(
+  id: string
+): Promise<ConfirmedTransaction> {
+  const res = await apiFetch(`${API_URL}/api/portfolio/transactions/${id}`, {
+    headers: await authHeaders(),
+    cache: "no-store",
+  });
+  const data = await parseResponse<{ transaction: ConfirmedTransaction }>(
+    res,
+    "Failed to fetch confirmed transaction"
+  );
+  return data.transaction;
+}
+
+export async function createReversalDraft(
+  id: string,
+  body: { transaction_at?: string | null; notes?: string | null } = {}
+): Promise<TransactionDraft> {
+  const res = await apiFetch(
+    `${API_URL}/api/portfolio/transactions/${id}/reversal-draft`,
+    {
+      method: "POST",
+      headers: await authHeaders(true),
+      body: JSON.stringify(body),
+    }
+  );
+  const data = await parseResponse<{ status: string; draft: TransactionDraft }>(
+    res,
+    "Failed to create reversal draft"
+  );
+  return data.draft;
+}
+
+export async function createCorrectionDraft(
+  id: string,
+  body: TransactionDraftMutation = {}
+): Promise<TransactionDraft> {
+  const res = await apiFetch(
+    `${API_URL}/api/portfolio/transactions/${id}/correction-draft`,
+    {
+      method: "POST",
+      headers: await authHeaders(true),
+      body: JSON.stringify(body),
+    }
+  );
+  const data = await parseResponse<{ status: string; draft: TransactionDraft }>(
+    res,
+    "Failed to create correction draft"
+  );
+  return data.draft;
+}
+
+export type TransactionImportBatch = {
+  id: string;
+  user_id: string;
+  source_type: string;
+  source_identifier: string | null;
+  source_filename: string | null;
+  source_fingerprint: string | null;
+  status: string;
+  raw_source_data: Record<string, unknown>;
+  source_metadata: Record<string, unknown>;
+  started_at: string | null;
+  completed_at: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type TransactionImportError = {
+  id: string;
+  user_id: string;
+  import_batch_id: string;
+  transaction_draft_id: string | null;
+  source_identifier: string | null;
+  source_row_number: number | null;
+  raw_source_data: Record<string, unknown>;
+  error_code: string;
+  error_message: string;
+  error_details: Record<string, unknown>;
+  created_at: string;
+  updated_at: string;
+  transaction_import_batches: {
+    source_type: string | null;
+    source_filename: string | null;
+    status: string | null;
+    created_at: string | null;
+  } | null;
+};
+
+export async function fetchTransactionImportBatches(params?: {
+  limit?: number;
+}): Promise<TransactionImportBatch[]> {
+  const query = new URLSearchParams();
+  if (params?.limit) {
+    query.set("limit", String(params.limit));
+  }
+  const suffix = query.toString() ? `?${query}` : "";
+  const res = await apiFetch(
+    `${API_URL}/api/portfolio/transaction-import-batches${suffix}`,
+    {
+      headers: await authHeaders(),
+      cache: "no-store",
+    }
+  );
+  const data = await parseResponse<{ batches: TransactionImportBatch[] }>(
+    res,
+    "Failed to fetch transaction import batches"
+  );
+  return data.batches;
+}
+
+export async function fetchTransactionImportErrors(params?: {
+  importBatchId?: string | null;
+  limit?: number;
+}): Promise<TransactionImportError[]> {
+  const query = new URLSearchParams();
+  if (params?.importBatchId) {
+    query.set("import_batch_id", params.importBatchId);
+  }
+  if (params?.limit) {
+    query.set("limit", String(params.limit));
+  }
+  const suffix = query.toString() ? `?${query}` : "";
+  const res = await apiFetch(
+    `${API_URL}/api/portfolio/transaction-import-errors${suffix}`,
+    {
+      headers: await authHeaders(),
+      cache: "no-store",
+    }
+  );
+  const data = await parseResponse<{ errors: TransactionImportError[] }>(
+    res,
+    "Failed to fetch transaction import errors"
+  );
+  return data.errors;
 }
 
 export async function runScreener() {

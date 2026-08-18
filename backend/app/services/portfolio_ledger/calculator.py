@@ -201,6 +201,25 @@ class LedgerSnapshot:
     def total_income_thb(self) -> Decimal:
         return sum((position.income_thb for position in self.positions.values()), ZERO)
 
+    @property
+    def total_fees_thb(self) -> Decimal:
+        return sum((position.fees_thb for position in self.positions.values()), ZERO)
+
+    @property
+    def total_cash_flow_thb(self) -> Decimal:
+        return sum((position.cash_flow_thb for position in self.positions.values()), ZERO)
+
+    @property
+    def total_unrealized_pnl_thb(self) -> Decimal | None:
+        values = [
+            position.unrealized_pnl_thb
+            for position in self.positions.values()
+            if position.unrealized_pnl_thb is not None
+        ]
+        if not values:
+            return None
+        return sum(values, ZERO)
+
     def to_report(self) -> dict[str, Any]:
         return {
             "as_of_transaction_at": (
@@ -214,7 +233,12 @@ class LedgerSnapshot:
             "total_cost_basis_thb": _decimal_string(self.total_cost_basis_thb),
             "total_realized_pnl_thb": _decimal_string(self.total_realized_pnl_thb),
             "total_income_thb": _decimal_string(self.total_income_thb),
+            "total_fees_thb": _decimal_string(self.total_fees_thb),
+            "total_cash_flow_thb": _decimal_string(self.total_cash_flow_thb),
             "total_market_value_thb": _decimal_string(self.total_market_value_thb),
+            "total_unrealized_pnl_thb": _decimal_string(
+                self.total_unrealized_pnl_thb
+            ),
             "positions": [
                 position.to_report()
                 for _, position in sorted(self.positions.items())
