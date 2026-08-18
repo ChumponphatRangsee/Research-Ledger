@@ -3,7 +3,7 @@ BEGIN;
 CREATE EXTENSION IF NOT EXISTS pgtap WITH SCHEMA extensions;
 SET search_path TO public, extensions;
 
-SELECT plan(34);
+SELECT plan(36);
 
 SELECT has_table(
   'public',
@@ -213,6 +213,13 @@ SELECT lives_ok(
         {
           "investment_account_id": "41000000-0000-0000-0000-000000000001",
           "asset_id": "42000000-0000-0000-0000-000000000001",
+          "as_of_transaction_at": "2026-01-02T12:34:56Z",
+          "as_of_ledger_sequence": "42",
+          "source_transaction_count": "3",
+          "source_metadata": {
+            "calculation": "weighted_average_cost_replay",
+            "source": "confirmed_transactions"
+          },
           "quantity": "2",
           "cost_basis_thb": "7035",
           "weighted_average_cost_thb": "3517.5",
@@ -265,6 +272,32 @@ SELECT is(
   ),
   1,
   'projection replacement stores User A rows'
+);
+
+SELECT results_eq(
+  $$
+    SELECT
+      as_of_transaction_at,
+      as_of_ledger_sequence,
+      source_transaction_count,
+      source_metadata
+    FROM public.portfolio_position_projections
+    WHERE user_id = '40000000-0000-0000-0000-000000000001'
+  $$,
+  $$
+    VALUES (
+      '2026-01-02T12:34:56Z'::TIMESTAMPTZ,
+      42::BIGINT,
+      3::BIGINT,
+      jsonb_build_object(
+        'calculation',
+        'weighted_average_cost_replay',
+        'source',
+        'confirmed_transactions'
+      )
+    )
+  $$,
+  'projection replacement persists deterministic replay metadata'
 );
 
 SET LOCAL ROLE authenticated;
@@ -391,6 +424,30 @@ SELECT throws_ok(
   '22023',
   'Projection rows must be a JSON array',
   'projection replacement rejects non-array JSON'
+);
+
+SELECT throws_ok(
+  $$
+    SELECT public.replace_portfolio_position_projections(
+      '40000000-0000-0000-0000-000000000001',
+      '[
+        {
+          "investment_account_id": "41000000-0000-0000-0000-000000000001",
+          "asset_id": "42000000-0000-0000-0000-000000000001",
+          "source_metadata": {"source": "client_supplied"},
+          "quantity": "1",
+          "cost_basis_thb": "1",
+          "realized_pnl_thb": "0",
+          "income_thb": "0",
+          "fees_thb": "0",
+          "cash_flow_thb": "0"
+        }
+      ]'::jsonb
+    )
+  $$,
+  '22023',
+  'Projection source metadata must be canonical',
+  'projection replacement rejects arbitrary source metadata'
 );
 
 SELECT * FROM finish();

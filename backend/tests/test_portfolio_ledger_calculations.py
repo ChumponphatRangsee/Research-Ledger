@@ -170,6 +170,24 @@ def test_marks_unrealized_pnl_and_allocation_with_supplied_prices():
     assert snapshot.total_market_value_thb == Decimal("2200")
 
 
+def test_snapshot_records_confirmed_transaction_replay_metadata():
+    snapshot = build_ledger_snapshot(
+        [
+            tx("buy-2", "BUY", 2, quantity="1", gross_amount="20"),
+            tx("buy-1", "BUY", 1, quantity="1", gross_amount="10"),
+        ]
+    )
+
+    assert snapshot.as_of_transaction_at == datetime(2026, 1, 2, tzinfo=UTC)
+    assert snapshot.as_of_ledger_sequence == 2
+    assert snapshot.source_transaction_count == 2
+    assert snapshot.source_metadata == {
+        "calculation": "weighted_average_cost_replay",
+        "source": "confirmed_transactions",
+    }
+    assert snapshot.to_report()["source_metadata"] == snapshot.source_metadata
+
+
 def test_from_supabase_row_preserves_joined_account_and_asset_metadata():
     record = TransactionRecord.from_supabase_row(
         {
@@ -311,6 +329,13 @@ def test_repository_rebuilds_owner_projection_rows_from_confirmed_transactions()
         {
             "investment_account_id": ACCOUNT_ID,
             "asset_id": ASSET_ID,
+            "as_of_transaction_at": "2026-01-01T00:00:00+00:00",
+            "as_of_ledger_sequence": 1,
+            "source_transaction_count": 1,
+            "source_metadata": {
+                "calculation": "weighted_average_cost_replay",
+                "source": "confirmed_transactions",
+            },
             "quantity": "2",
             "cost_basis_thb": "7035",
             "weighted_average_cost_thb": "3517.5",

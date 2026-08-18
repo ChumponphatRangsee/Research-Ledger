@@ -64,7 +64,7 @@ class SupabasePortfolioLedgerRepository:
     def rebuild_position_projections(self, *, user_id: UUID) -> LedgerSnapshot:
         snapshot = self.build_snapshot(user_id=user_id)
         rows = [
-            _projection_row(position.to_report())
+            _projection_row(position.to_report(), snapshot=snapshot)
             for position in snapshot.positions.values()
         ]
         (
@@ -81,10 +81,22 @@ class SupabasePortfolioLedgerRepository:
         return snapshot
 
 
-def _projection_row(report: dict[str, object]) -> dict[str, object]:
+def _projection_row(
+    report: dict[str, object],
+    *,
+    snapshot: LedgerSnapshot,
+) -> dict[str, object]:
     return {
         "investment_account_id": report["investment_account_id"],
         "asset_id": report["asset_id"],
+        "as_of_transaction_at": (
+            snapshot.as_of_transaction_at.isoformat()
+            if snapshot.as_of_transaction_at is not None
+            else None
+        ),
+        "as_of_ledger_sequence": snapshot.as_of_ledger_sequence,
+        "source_transaction_count": snapshot.source_transaction_count,
+        "source_metadata": dict(snapshot.source_metadata),
         "quantity": report["quantity"],
         "cost_basis_thb": report["cost_basis_thb"],
         "weighted_average_cost_thb": report["weighted_average_cost_thb"],

@@ -82,6 +82,24 @@ BEGIN
       USING ERRCODE = '22023';
   END IF;
 
+  IF EXISTS (
+    SELECT 1
+    FROM jsonb_array_elements(p_rows) AS item(row_data)
+    WHERE item.row_data ? 'source_metadata'
+      AND (
+        jsonb_typeof(item.row_data -> 'source_metadata') <> 'object'
+        OR (item.row_data -> 'source_metadata') <> jsonb_build_object(
+          'calculation',
+          'weighted_average_cost_replay',
+          'source',
+          'confirmed_transactions'
+        )
+      )
+  ) THEN
+    RAISE EXCEPTION 'Projection source metadata must be canonical'
+      USING ERRCODE = '22023';
+  END IF;
+
   DELETE FROM public.portfolio_position_projections
   WHERE user_id = p_user_id;
 
@@ -89,6 +107,9 @@ BEGIN
     user_id,
     investment_account_id,
     asset_id,
+    as_of_transaction_at,
+    as_of_ledger_sequence,
+    source_transaction_count,
     quantity,
     cost_basis_thb,
     weighted_average_cost_thb,
@@ -99,12 +120,19 @@ BEGIN
     market_value_thb,
     unrealized_pnl_thb,
     allocation_pct,
+    source_metadata,
     calculated_at
   )
   SELECT
     p_user_id,
     (item.row_data ->> 'investment_account_id')::UUID,
     (item.row_data ->> 'asset_id')::UUID,
+    NULLIF(item.row_data ->> 'as_of_transaction_at', '')::TIMESTAMPTZ,
+    NULLIF(item.row_data ->> 'as_of_ledger_sequence', '')::BIGINT,
+    COALESCE(
+      NULLIF(item.row_data ->> 'source_transaction_count', '')::BIGINT,
+      0
+    ),
     (item.row_data ->> 'quantity')::NUMERIC,
     (item.row_data ->> 'cost_basis_thb')::NUMERIC,
     NULLIF(item.row_data ->> 'weighted_average_cost_thb', '')::NUMERIC,
@@ -115,6 +143,15 @@ BEGIN
     NULLIF(item.row_data ->> 'market_value_thb', '')::NUMERIC,
     NULLIF(item.row_data ->> 'unrealized_pnl_thb', '')::NUMERIC,
     NULLIF(item.row_data ->> 'allocation_pct', '')::NUMERIC,
+    COALESCE(
+      item.row_data -> 'source_metadata',
+      jsonb_build_object(
+        'calculation',
+        'weighted_average_cost_replay',
+        'source',
+        'confirmed_transactions'
+      )
+    ),
     v_calculated_at
   FROM jsonb_array_elements(p_rows) AS item(row_data);
 END;
@@ -142,6 +179,10 @@ SELECT
   asset.name AS asset_name,
   asset.asset_type,
   asset.currency AS asset_currency,
+  projection.as_of_transaction_at,
+  projection.as_of_ledger_sequence,
+  projection.source_transaction_count,
+  projection.source_metadata,
   projection.quantity,
   projection.cost_basis_thb,
   projection.weighted_average_cost_thb,
@@ -166,6 +207,9 @@ WITH (security_invoker = true)
 AS
 SELECT
   user_id,
+  max(as_of_transaction_at) AS as_of_transaction_at,
+  max(as_of_ledger_sequence) AS as_of_ledger_sequence,
+  max(source_transaction_count) AS source_transaction_count,
   sum(cost_basis_thb) AS total_cost_basis_thb,
   sum(realized_pnl_thb) AS total_realized_pnl_thb,
   sum(income_thb) AS total_income_thb,

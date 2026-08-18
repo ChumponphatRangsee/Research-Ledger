@@ -15,6 +15,10 @@ from typing import Any
 
 ZERO = Decimal("0")
 POSITION_ZERO_TOLERANCE = Decimal("0.000001")
+SOURCE_METADATA = {
+    "calculation": "weighted_average_cost_replay",
+    "source": "confirmed_transactions",
+}
 
 
 class LedgerReplayError(ValueError):
@@ -167,6 +171,12 @@ class PortfolioPosition:
 @dataclass
 class LedgerSnapshot:
     positions: dict[tuple[str, str], PortfolioPosition] = field(default_factory=dict)
+    as_of_transaction_at: datetime | None = None
+    as_of_ledger_sequence: int | None = None
+    source_transaction_count: int = 0
+    source_metadata: dict[str, str] = field(
+        default_factory=lambda: dict(SOURCE_METADATA)
+    )
 
     @property
     def total_market_value_thb(self) -> Decimal | None:
@@ -193,6 +203,14 @@ class LedgerSnapshot:
 
     def to_report(self) -> dict[str, Any]:
         return {
+            "as_of_transaction_at": (
+                self.as_of_transaction_at.isoformat()
+                if self.as_of_transaction_at is not None
+                else None
+            ),
+            "as_of_ledger_sequence": self.as_of_ledger_sequence,
+            "source_transaction_count": self.source_transaction_count,
+            "source_metadata": dict(self.source_metadata),
             "total_cost_basis_thb": _decimal_string(self.total_cost_basis_thb),
             "total_realized_pnl_thb": _decimal_string(self.total_realized_pnl_thb),
             "total_income_thb": _decimal_string(self.total_income_thb),
@@ -211,10 +229,14 @@ def build_ledger_snapshot(
 ) -> LedgerSnapshot:
     """Replay confirmed transactions in `(transaction_at, ledger_sequence)` order."""
 
+    ordered_transactions = sorted(
+        transactions,
+        key=lambda row: (row.transaction_at, row.ledger_sequence),
+    )
     positions: dict[tuple[str, str], PortfolioPosition] = {}
     effects_by_transaction_id: dict[str, LedgerEffect] = {}
 
-    for record in sorted(transactions, key=lambda row: (row.transaction_at, row.ledger_sequence)):
+    for record in ordered_transactions:
         position = positions.setdefault(
             record.position_key,
             PortfolioPosition(
@@ -234,7 +256,18 @@ def build_ledger_snapshot(
         position.apply(effect, transaction_id=record.id)
         effects_by_transaction_id[record.id] = effect
 
-    snapshot = LedgerSnapshot(positions=positions)
+    last_transaction = ordered_transactions[-1] if ordered_transactions else None
+    snapshot = LedgerSnapshot(
+        positions=positions,
+        as_of_transaction_at=(
+            last_transaction.transaction_at if last_transaction is not None else None
+        ),
+        as_of_ledger_sequence=(
+            last_transaction.ledger_sequence if last_transaction is not None else None
+        ),
+        source_transaction_count=len(ordered_transactions),
+        source_metadata=dict(SOURCE_METADATA),
+    )
     _apply_marks(snapshot, mark_prices_thb or {})
     return snapshot
 
