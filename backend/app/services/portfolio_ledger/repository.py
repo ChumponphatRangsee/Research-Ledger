@@ -60,3 +60,51 @@ class SupabasePortfolioLedgerRepository:
         return build_ledger_snapshot(
             self.fetch_confirmed_transactions(user_id=user_id)
         )
+
+    def rebuild_position_projections(self, *, user_id: UUID) -> LedgerSnapshot:
+        snapshot = self.build_snapshot(user_id=user_id)
+        rows = [
+            _projection_row(position.to_report(), snapshot=snapshot)
+            for position in snapshot.positions.values()
+        ]
+        (
+            self._get_client()
+            .rpc(
+                "replace_portfolio_position_projections",
+                {
+                    "p_user_id": str(user_id),
+                    "p_rows": rows,
+                },
+            )
+            .execute()
+        )
+        return snapshot
+
+
+def _projection_row(
+    report: dict[str, object],
+    *,
+    snapshot: LedgerSnapshot,
+) -> dict[str, object]:
+    return {
+        "investment_account_id": report["investment_account_id"],
+        "asset_id": report["asset_id"],
+        "as_of_transaction_at": (
+            snapshot.as_of_transaction_at.isoformat()
+            if snapshot.as_of_transaction_at is not None
+            else None
+        ),
+        "as_of_ledger_sequence": snapshot.as_of_ledger_sequence,
+        "source_transaction_count": snapshot.source_transaction_count,
+        "source_metadata": dict(snapshot.source_metadata),
+        "quantity": report["quantity"],
+        "cost_basis_thb": report["cost_basis_thb"],
+        "weighted_average_cost_thb": report["weighted_average_cost_thb"],
+        "realized_pnl_thb": report["realized_pnl_thb"],
+        "income_thb": report["income_thb"],
+        "fees_thb": report["fees_thb"],
+        "cash_flow_thb": report["cash_flow_thb"],
+        "market_value_thb": report["market_value_thb"],
+        "unrealized_pnl_thb": report["unrealized_pnl_thb"],
+        "allocation_pct": report["allocation_pct"],
+    }
