@@ -5,9 +5,9 @@ export default function PortfolioPage() {
   return (
     <div className="space-y-6">
       <PageHeader
-        eyebrow="Portfolio ledger"
+        eyebrow="Investment OS"
         title="Portfolio"
-        description="Review transaction drafts, inspect confirmed ledger positions, and keep legacy paper holdings visible during migration."
+        description="Review what you own, your cost basis, portfolio activity, and any transactions that need human attention."
       />
       <PortfolioWorkbench />
     </div>

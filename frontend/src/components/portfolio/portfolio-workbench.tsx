@@ -53,45 +53,64 @@ import {
 import { cn } from "@/lib/utils";
 
 type PortfolioTab =
-  | "ledger"
-  | "accounts"
+  | "overview"
+  | "positions"
+  | "activity"
   | "drafts"
-  | "transactions"
-  | "import-errors"
-  | "legacy";
+  | "ledger";
+
+type LedgerView = "summary" | "accounts" | "import-errors" | "legacy";
 
 const tabs: Array<{ id: PortfolioTab; label: string; description: string }> = [
   {
-    id: "ledger",
-    label: "Ledger summary",
-    description: "Positions rebuilt from immutable confirmed transactions.",
+    id: "overview",
+    label: "Overview",
+    description: "Ownership, cost basis, performance, and items needing review.",
   },
   {
-    id: "accounts",
-    label: "Accounts",
-    description: "Separate your own and family brokerage, bank, and wallet accounts.",
+    id: "positions",
+    label: "Positions",
+    description: "Simplified holdings rebuilt from confirmed transactions.",
+  },
+  {
+    id: "activity",
+    label: "Activity",
+    description: "Confirmed transaction history with correction and reversal workflows.",
   },
   {
     id: "drafts",
-    label: "Draft review",
+    label: "Drafts",
     description: "Human confirmation queue for imported or proposed transactions.",
   },
   {
-    id: "transactions",
-    label: "Confirmed transactions",
-    description: "Confirmed draft evidence linked to immutable ledger rows.",
-  },
-  {
-    id: "import-errors",
-    label: "Import errors",
-    description: "Rows blocked from draft creation during spreadsheet staging.",
-  },
-  {
-    id: "legacy",
-    label: "Legacy holdings",
-    description: "Existing paper holdings from approved analyses.",
+    id: "ledger",
+    label: "Ledger",
+    description: "Accounting detail, accounts, import diagnostics, and archived holdings.",
   },
 ];
+
+const ledgerViews: Array<{ id: LedgerView; label: string }> = [
+  { id: "summary", label: "Ledger detail" },
+  { id: "accounts", label: "Accounts" },
+  { id: "import-errors", label: "Import errors" },
+  { id: "legacy", label: "Legacy holdings" },
+];
+
+type OverviewMetric = {
+  label: string;
+  value: string;
+  description: string;
+  unavailable?: boolean;
+};
+
+type AttentionItem = {
+  label: string;
+  value: string;
+  description: string;
+  tab?: PortfolioTab;
+  ledgerView?: LedgerView;
+  urgent?: boolean;
+};
 
 const AUTH_REQUIRED_MESSAGE = "Please sign in to view portfolio ledger data.";
 const accountTypeOptions: Array<{ value: InvestmentAccountType; label: string }> = [
@@ -145,6 +164,16 @@ function formatThb(value: string | number | null | undefined) {
   }).format(parsed);
 }
 
+function formatPercent(value: string | number | null | undefined) {
+  const parsed = numericValue(value);
+  if (parsed == null) return "-";
+  return new Intl.NumberFormat("en-US", {
+    style: "percent",
+    minimumFractionDigits: 1,
+    maximumFractionDigits: 1,
+  }).format(parsed / 100);
+}
+
 function formatDate(value: string) {
   return new Intl.DateTimeFormat("en-GB", {
     dateStyle: "medium",
@@ -168,7 +197,8 @@ function nullableString(value: string) {
 }
 
 export function PortfolioWorkbench() {
-  const [activeTab, setActiveTab] = useState<PortfolioTab>("ledger");
+  const [activeTab, setActiveTab] = useState<PortfolioTab>("overview");
+  const [ledgerView, setLedgerView] = useState<LedgerView>("summary");
   const [summary, setSummary] = useState<LedgerSummary | null>(null);
   const [accounts, setAccounts] = useState<InvestmentAccount[]>([]);
   const [pendingDrafts, setPendingDrafts] = useState<TransactionDraft[]>([]);
@@ -234,15 +264,98 @@ export function PortfolioWorkbench() {
     void load();
   }, [load]);
 
-  const totals = useMemo(
+  const overviewMetrics = useMemo<OverviewMetric[]>(
     () => [
-      ["Cost basis", formatThb(summary?.total_cost_basis_thb)],
-      ["Realized P&L", formatThb(summary?.total_realized_pnl_thb)],
-      ["Income", formatThb(summary?.total_income_thb)],
-      ["Marked value", formatThb(summary?.total_market_value_thb)],
+      {
+        label: "Cost basis",
+        value: formatThb(summary?.total_cost_basis_thb),
+        description: "Confirmed weighted cost basis in THB.",
+      },
+      {
+        label: "Realized P&L",
+        value: formatThb(summary?.total_realized_pnl_thb),
+        description: "Closed-transaction result from ledger projections.",
+      },
+      {
+        label: "Income",
+        value: formatThb(summary?.total_income_thb),
+        description: "Ledger income from confirmed transactions.",
+      },
+      {
+        label: "Cash flow",
+        value: formatThb(summary?.total_cash_flow_thb),
+        description: "Net confirmed cash flow in portfolio base currency.",
+      },
+      {
+        label: "Fees",
+        value: formatThb(summary?.total_fees_thb),
+        description: "Confirmed transaction fees in THB.",
+      },
     ],
     [summary]
   );
+
+  const marketValueMetric = useMemo<OverviewMetric>(
+    () => ({
+      label: "Market value",
+      value:
+        summary?.total_market_value_thb == null
+          ? "Unavailable"
+          : formatThb(summary.total_market_value_thb),
+      description:
+        summary?.total_market_value_thb == null
+          ? "Waiting for authoritative price and FX data from a later backend PR."
+          : "Authoritative backend market value.",
+      unavailable: summary?.total_market_value_thb == null,
+    }),
+    [summary]
+  );
+
+  const positions = summary?.positions ?? [];
+  const hasAllocationData = positions.some(
+    (position) => numericValue(position.allocation_pct) != null
+  );
+  const attentionItems = useMemo<AttentionItem[]>(
+    () => [
+      {
+        label: "Drafts require review",
+        value: String(pendingDrafts.length),
+        description:
+          pendingDrafts.length === 0
+            ? "No pending human review queue."
+            : "Confirming a draft creates immutable ledger transactions.",
+        tab: "drafts",
+        urgent: pendingDrafts.length > 0,
+      },
+      {
+        label: "Import rows blocked",
+        value: String(importErrors.length),
+        description:
+          importErrors.length === 0
+            ? "No current import diagnostics need review."
+            : "Spreadsheet rows need correction before draft creation.",
+        tab: "ledger",
+        ledgerView: "import-errors",
+        urgent: importErrors.length > 0,
+      },
+      {
+        label: "Market pricing",
+        value: summary?.total_market_value_thb == null ? "Unavailable" : "Available",
+        description:
+          summary?.total_market_value_thb == null
+            ? "Market value, weights, unrealized P&L, and returns are intentionally omitted."
+            : "Backend returned market value data.",
+        urgent: false,
+      },
+    ],
+    [importErrors.length, pendingDrafts.length, summary?.total_market_value_thb]
+  );
+
+  function openAttentionItem(item: AttentionItem) {
+    if (!item.tab) return;
+    setActiveTab(item.tab);
+    if (item.ledgerView) setLedgerView(item.ledgerView);
+  }
 
   async function handleRefresh() {
     setRefreshing(true);
@@ -369,23 +482,8 @@ export function PortfolioWorkbench() {
 
   return (
     <div className="space-y-5">
-      <div className="grid gap-3 md:grid-cols-4">
-        {totals.map(([label, value]) => (
-          <Card key={label}>
-            <CardHeader className="p-4 pb-2">
-              <CardTitle className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                {label}
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="p-4 pt-0">
-              <p className="text-xl font-semibold tabular-nums">{value}</p>
-            </CardContent>
-          </Card>
-        ))}
-      </div>
-
       <div className="flex flex-col gap-3 rounded-xl border bg-card p-3 md:flex-row md:items-center md:justify-between">
-        <div className="grid gap-2 md:grid-cols-6">
+        <div className="grid gap-2 md:grid-cols-5">
           {tabs.map((tab) => {
             const active = tab.id === activeTab;
             return (
@@ -445,13 +543,20 @@ export function PortfolioWorkbench() {
         </Card>
       )}
 
-      {activeTab === "ledger" && <LedgerSummaryPanel summary={summary} />}
-      {activeTab === "accounts" && (
-        <InvestmentAccountsPanel
-          accounts={accounts}
-          creating={creatingAccount}
-          onCreate={(values) => void handleCreateAccount(values)}
+      {activeTab === "overview" && (
+        <OverviewPanel
+          summary={summary}
+          positions={positions}
+          metrics={overviewMetrics}
+          marketValueMetric={marketValueMetric}
+          attentionItems={attentionItems}
+          hasAllocationData={hasAllocationData}
+          onOpenAttentionItem={openAttentionItem}
+          onOpenPositions={() => setActiveTab("positions")}
         />
+      )}
+      {activeTab === "positions" && (
+        <PositionsPanel positions={positions} hasAllocationData={hasAllocationData} />
       )}
       {activeTab === "drafts" && (
         <DraftReviewPanel
@@ -465,7 +570,7 @@ export function PortfolioWorkbench() {
           onConfirm={(draft) => void handleConfirm(draft)}
         />
       )}
-      {activeTab === "transactions" && (
+      {activeTab === "activity" && (
         <ConfirmedTransactionsPanel
           transactions={confirmedTransactions}
           selectedTransaction={selectedTransaction}
@@ -482,10 +587,401 @@ export function PortfolioWorkbench() {
           }
         />
       )}
-      {activeTab === "import-errors" && (
+      {activeTab === "ledger" && (
+        <LedgerPanel
+          activeView={ledgerView}
+          onChangeView={setLedgerView}
+          summary={summary}
+          accounts={accounts}
+          creatingAccount={creatingAccount}
+          onCreateAccount={(values) => void handleCreateAccount(values)}
+          importBatches={importBatches}
+          importErrors={importErrors}
+        />
+      )}
+    </div>
+  );
+}
+
+function OverviewPanel({
+  summary,
+  positions,
+  metrics,
+  marketValueMetric,
+  attentionItems,
+  hasAllocationData,
+  onOpenAttentionItem,
+  onOpenPositions,
+}: {
+  summary: LedgerSummary | null;
+  positions: LedgerSummary["positions"];
+  metrics: OverviewMetric[];
+  marketValueMetric: OverviewMetric;
+  attentionItems: AttentionItem[];
+  hasAllocationData: boolean;
+  onOpenAttentionItem: (item: AttentionItem) => void;
+  onOpenPositions: () => void;
+}) {
+  const visiblePositions = positions.slice(0, 6);
+  const asOfLabel = summary?.as_of_transaction_at
+    ? formatDate(summary.as_of_transaction_at)
+    : "No confirmed transactions";
+
+  return (
+    <div className="space-y-5">
+      <div className="grid gap-3 md:grid-cols-5">
+        {metrics.map((metric) => (
+          <MetricCard key={metric.label} metric={metric} />
+        ))}
+      </div>
+
+      <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_360px]">
+        <Card className="overflow-hidden">
+          <div className="flex flex-col gap-3 border-b px-5 py-4 md:flex-row md:items-start md:justify-between">
+            <div>
+              <h2 className="font-semibold">What you own</h2>
+              <p className="mt-1 text-xs text-muted-foreground">
+                {positions.length} ledger-derived positions as of {asOfLabel}.
+              </p>
+            </div>
+            <Button size="sm" variant="outline" onClick={onOpenPositions}>
+              <Eye className="h-4 w-4" />
+              Positions
+            </Button>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[720px] text-left text-sm">
+              <thead className="border-b bg-muted/50 text-xs uppercase tracking-wide text-muted-foreground">
+                <tr>
+                  {["Asset", "Account", "Quantity", "Cost basis", "Realized P&L"].map(
+                    (heading) => (
+                      <th key={heading} className="px-4 py-3 font-medium">
+                        {heading}
+                      </th>
+                    )
+                  )}
+                </tr>
+              </thead>
+              <tbody className="divide-y">
+                {visiblePositions.length === 0 && (
+                  <tr>
+                    <td colSpan={5} className="h-36 px-6 text-center text-muted-foreground">
+                      No confirmed positions yet.
+                    </td>
+                  </tr>
+                )}
+                {visiblePositions.map((position) => (
+                  <tr
+                    key={`${position.investment_account_id}-${position.asset_id}`}
+                    className="hover:bg-muted/30"
+                  >
+                    <td className="px-4 py-4">
+                      <p className="font-semibold">{position.asset_symbol ?? "-"}</p>
+                      <p className="text-xs text-muted-foreground">
+                        {position.asset_type ?? "Asset"} - {position.asset_currency ?? "-"}
+                      </p>
+                    </td>
+                    <td className="px-4 py-4 font-medium">
+                      {position.investment_account_name ?? "Unknown account"}
+                    </td>
+                    <td className="px-4 py-4 tabular-nums">
+                      {formatDecimal(position.quantity, 8)}
+                    </td>
+                    <td className="px-4 py-4 tabular-nums">
+                      {formatThb(position.cost_basis_thb)}
+                    </td>
+                    <td className="px-4 py-4 tabular-nums">
+                      {formatThb(position.realized_pnl_thb)}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </Card>
+
+        <div className="space-y-4">
+          <MetricCard metric={marketValueMetric} />
+          <Card>
+            <CardHeader className="p-5 pb-3">
+              <CardTitle className="text-base">Needs attention</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3 p-5 pt-0">
+              {attentionItems.map((item) => (
+                <button
+                  key={item.label}
+                  type="button"
+                  onClick={() => onOpenAttentionItem(item)}
+                  disabled={!item.tab}
+                  className={cn(
+                    "w-full rounded-lg border p-3 text-left transition-colors",
+                    item.urgent
+                      ? "border-primary/30 bg-primary/5"
+                      : "border-border bg-background",
+                    item.tab && "hover:bg-muted"
+                  )}
+                >
+                  <span className="flex items-center justify-between gap-3">
+                    <span className="text-sm font-medium">{item.label}</span>
+                    <span className="text-sm font-semibold tabular-nums">{item.value}</span>
+                  </span>
+                  <span className="mt-1 block text-xs leading-5 text-muted-foreground">
+                    {item.description}
+                  </span>
+                </button>
+              ))}
+            </CardContent>
+          </Card>
+        </div>
+      </div>
+
+      <AllocationPanel positions={positions} hasAllocationData={hasAllocationData} />
+    </div>
+  );
+}
+
+function MetricCard({ metric }: { metric: OverviewMetric }) {
+  return (
+    <Card className={cn(metric.unavailable && "border-dashed")}>
+      <CardHeader className="p-4 pb-2">
+        <CardTitle className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+          {metric.label}
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="p-4 pt-0">
+        <p
+          className={cn(
+            "text-xl font-semibold tabular-nums",
+            metric.unavailable && "text-muted-foreground"
+          )}
+        >
+          {metric.value}
+        </p>
+        <p className="mt-2 text-xs leading-5 text-muted-foreground">
+          {metric.description}
+        </p>
+      </CardContent>
+    </Card>
+  );
+}
+
+function AllocationPanel({
+  positions,
+  hasAllocationData,
+}: {
+  positions: LedgerSummary["positions"];
+  hasAllocationData: boolean;
+}) {
+  if (!hasAllocationData) {
+    return (
+      <Card className="border-dashed">
+        <CardContent className="p-5">
+          <h2 className="font-semibold">Allocation unavailable</h2>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Portfolio weights are hidden until the backend returns authoritative
+            allocation values from price and FX data.
+          </p>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  return (
+    <Card className="overflow-hidden">
+      <div className="border-b px-5 py-4">
+        <h2 className="font-semibold">Allocation</h2>
+        <p className="mt-1 text-xs text-muted-foreground">
+          Displaying backend-provided allocation percentages only.
+        </p>
+      </div>
+      <div className="overflow-x-auto">
+        <table className="w-full min-w-[640px] text-left text-sm">
+          <thead className="border-b bg-muted/50 text-xs uppercase tracking-wide text-muted-foreground">
+            <tr>
+              {["Asset", "Account", "Allocation", "Market value"].map((heading) => (
+                <th key={heading} className="px-4 py-3 font-medium">
+                  {heading}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody className="divide-y">
+            {positions.map((position) => (
+              <tr
+                key={`${position.investment_account_id}-${position.asset_id}`}
+                className="hover:bg-muted/30"
+              >
+                <td className="px-4 py-4 font-semibold">{position.asset_symbol ?? "-"}</td>
+                <td className="px-4 py-4">
+                  {position.investment_account_name ?? "Unknown account"}
+                </td>
+                <td className="px-4 py-4 tabular-nums">
+                  {formatPercent(position.allocation_pct)}
+                </td>
+                <td className="px-4 py-4 tabular-nums">
+                  {formatThb(position.market_value_thb)}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </Card>
+  );
+}
+
+function PositionsPanel({
+  positions,
+  hasAllocationData,
+}: {
+  positions: LedgerSummary["positions"];
+  hasAllocationData: boolean;
+}) {
+  return (
+    <div className="space-y-4">
+      {!hasAllocationData && (
+        <Card className="border-dashed">
+          <CardContent className="p-4 text-sm text-muted-foreground">
+            Market value, weight, unrealized P&L, and returns are intentionally
+            omitted until the backend supplies authoritative price and FX data.
+          </CardContent>
+        </Card>
+      )}
+      <Card className="overflow-hidden">
+        <div className="border-b px-5 py-4">
+          <h2 className="font-semibold">Positions</h2>
+          <p className="mt-1 text-xs text-muted-foreground">
+            Simplified view of ledger-derived ownership and cost basis.
+          </p>
+        </div>
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-[860px] text-left text-sm">
+            <thead className="border-b bg-muted/50 text-xs uppercase tracking-wide text-muted-foreground">
+              <tr>
+                {["Asset", "Account", "Quantity", "Cost basis", "Average cost", "Realized P&L"].map(
+                  (heading) => (
+                    <th key={heading} className="px-4 py-3 font-medium">
+                      {heading}
+                    </th>
+                  )
+                )}
+              </tr>
+            </thead>
+            <tbody className="divide-y">
+              {positions.length === 0 && (
+                <tr>
+                  <td colSpan={6} className="h-40 px-6 text-center text-muted-foreground">
+                    No confirmed ledger positions yet.
+                  </td>
+                </tr>
+              )}
+              {positions.map((position) => (
+                <tr
+                  key={`${position.investment_account_id}-${position.asset_id}`}
+                  className="hover:bg-muted/30"
+                >
+                  <td className="px-4 py-4">
+                    <p className="font-semibold">{position.asset_symbol ?? "-"}</p>
+                    <p className="text-xs text-muted-foreground">
+                      {position.asset_type ?? "Asset"} - {position.asset_currency ?? "-"}
+                    </p>
+                  </td>
+                  <td className="px-4 py-4 font-medium">
+                    {position.investment_account_name ?? "Unknown account"}
+                  </td>
+                  <td className="px-4 py-4 tabular-nums">
+                    {formatDecimal(position.quantity, 8)}
+                  </td>
+                  <td className="px-4 py-4 tabular-nums">
+                    {formatThb(position.cost_basis_thb)}
+                  </td>
+                  <td className="px-4 py-4 tabular-nums">
+                    {formatThb(position.weighted_average_cost_thb)}
+                  </td>
+                  <td className="px-4 py-4 tabular-nums">
+                    {formatThb(position.realized_pnl_thb)}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </Card>
+    </div>
+  );
+}
+
+function LedgerPanel({
+  activeView,
+  onChangeView,
+  summary,
+  accounts,
+  creatingAccount,
+  onCreateAccount,
+  importBatches,
+  importErrors,
+}: {
+  activeView: LedgerView;
+  onChangeView: (view: LedgerView) => void;
+  summary: LedgerSummary | null;
+  accounts: InvestmentAccount[];
+  creatingAccount: boolean;
+  onCreateAccount: (values: {
+    name: string;
+    account_type: InvestmentAccountType;
+    institution_name: string;
+    external_identifier: string;
+    currency: string;
+  }) => void;
+  importBatches: TransactionImportBatch[];
+  importErrors: TransactionImportError[];
+}) {
+  return (
+    <div className="space-y-4">
+      <div className="flex flex-wrap gap-2 rounded-xl border bg-card p-2">
+        {ledgerViews.map((view) => {
+          const active = activeView === view.id;
+          return (
+            <button
+              key={view.id}
+              type="button"
+              onClick={() => onChangeView(view.id)}
+              className={cn(
+                "rounded-md px-3 py-2 text-sm font-medium transition-colors",
+                active
+                  ? "bg-primary text-primary-foreground"
+                  : "text-muted-foreground hover:bg-muted hover:text-foreground"
+              )}
+            >
+              {view.label}
+            </button>
+          );
+        })}
+      </div>
+
+      {activeView === "summary" && <LedgerSummaryPanel summary={summary} />}
+      {activeView === "accounts" && (
+        <InvestmentAccountsPanel
+          accounts={accounts}
+          creating={creatingAccount}
+          onCreate={onCreateAccount}
+        />
+      )}
+      {activeView === "import-errors" && (
         <ImportErrorsPanel batches={importBatches} errors={importErrors} />
       )}
-      {activeTab === "legacy" && <PortfolioList />}
+      {activeView === "legacy" && (
+        <div className="space-y-3">
+          <div className="rounded-xl border bg-card px-5 py-4">
+            <h2 className="font-semibold">Legacy holdings archive</h2>
+            <p className="mt-1 text-xs text-muted-foreground">
+              Migration-era paper holdings from approved analyses. This is not the
+              current ledger source of truth.
+            </p>
+          </div>
+          <PortfolioList />
+        </div>
+      )}
     </div>
   );
 }
